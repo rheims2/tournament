@@ -56,6 +56,7 @@ node "$WORK/emit.cjs" > "$WORK/02_fixture.sql"
 echo "==> playing every match through submit_match_score()"
 "${PSQL[@]}" -f supabase/tests/03_play.sql >> "$WORK/out.txt" 2>&1
 "${PSQL[@]}" -f supabase/tests/04_corrections_and_roles.sql >> "$WORK/out.txt" 2>&1
+"${PSQL[@]}" -f supabase/tests/05_set_rules.sql >> "$WORK/out.txt" 2>&1
 
 echo
 grep -Eo 'TEST [^|]*(PASS|FAIL[^|]*)' "$WORK/out.txt" | sed 's/^/  /'
@@ -69,7 +70,7 @@ fi
 
 # Every assertion must actually appear. Without this a suppressed NOTICE or a
 # skipped file would look like a clean run. Bump when adding assertions.
-EXPECTED=21
+EXPECTED=28
 COUNT=$(grep -c 'TEST .*PASS' "$WORK/out.txt")
 if [ "$COUNT" -ne "$EXPECTED" ]; then
   echo "DATABASE TESTS INCOMPLETE: expected $EXPECTED assertions, saw $COUNT" >&2

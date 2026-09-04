@@ -408,6 +408,41 @@ create trigger matches_propagate
   execute function public.trg_matches_propagate();
 
 -- ---------------------------------------------------------------------------
+-- Set completion
+--
+-- A running score such as 14-12 is not a won set. The leader must reach the
+-- target for that set (the deciding set is played to a lower target) and be
+-- ahead by the win-by margin, unless a hard cap has been reached. Keeping this
+-- in the database means a match cannot be finalized on an unfinished set no
+-- matter which client posts the score.
+-- ---------------------------------------------------------------------------
+create or replace function public.set_target(
+  p_set_number int, p_best_of int, p_points_to_win int, p_deciding_points int
+) returns int
+language sql
+immutable
+as $$
+  select case when p_best_of > 1 and p_set_number = p_best_of
+              then p_deciding_points else p_points_to_win end;
+$$;
+
+create or replace function public.is_set_complete(
+  p_home int, p_away int, p_set_number int, p_best_of int,
+  p_points_to_win int, p_deciding_points int, p_win_by int, p_cap int
+) returns boolean
+language sql
+immutable
+as $$
+  select case
+    when p_home = p_away then false
+    when greatest(p_home, p_away)
+         < public.set_target(p_set_number, p_best_of, p_points_to_win, p_deciding_points) then false
+    when p_cap is not null and greatest(p_home, p_away) >= p_cap then true
+    else greatest(p_home, p_away) - least(p_home, p_away) >= p_win_by
+  end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Score entry
 --
 -- Single atomic entry point used by scorekeepers and admins. It writes the
@@ -427,14 +462,17 @@ security definer
 set search_path = public
 as $$
 declare
-  m         public.matches;
-  s         jsonb;
-  idx       int := 0;
-  home_sets int := 0;
-  away_sets int := 0;
-  needed    int;
-  hs        int;
-  aws       int;
+  m          public.matches;
+  d          public.divisions;
+  s          jsonb;
+  idx        int := 0;
+  home_sets  int := 0;
+  away_sets  int := 0;
+  needed     int;
+  hs         int;
+  aws        int;
+  complete   boolean;
+  decided_at int := null;
   new_status match_status;
   new_winner uuid;
   new_loser  uuid;
@@ -465,6 +503,8 @@ begin
     raise exception 'This match is best of %, got % sets', m.best_of, jsonb_array_length(p_sets);
   end if;
 
+  select * into d from public.divisions where id = m.division_id;
+
   -- A result already existed: tear down anything it fed before rewriting it.
   if m.status = 'final' then
     perform public.clear_downstream(m.id);
@@ -483,16 +523,31 @@ begin
       raise exception 'Set % has an out-of-range score (%-%)', idx, hs, aws;
     end if;
 
+    complete := public.is_set_complete(
+      hs, aws, idx, m.best_of, d.points_to_win, d.deciding_set_points, d.win_by, d.point_cap);
+
+    -- Everything up to the clinching set must be a finished set; a running
+    -- score entered there is a slip, not a result.
+    if p_finalize and decided_at is null and not complete
+       and idx < jsonb_array_length(p_sets) then
+      raise exception 'Set % (%-%) is not a finished set', idx, hs, aws;
+    end if;
+
+    -- Sets played after the match was already won are surplus.
+    exit when decided_at is not null;
+
     insert into public.match_sets (match_id, set_number, home_score, away_score)
     values (m.id, idx, hs, aws);
 
-    -- A set counts only once it has been played and decided.
-    if hs <> aws then
+    if complete then
       if hs > aws then home_sets := home_sets + 1; else away_sets := away_sets + 1; end if;
+      if home_sets >= needed or away_sets >= needed then
+        decided_at := idx;
+      end if;
     end if;
   end loop;
 
-  if p_finalize and (home_sets >= needed or away_sets >= needed) then
+  if p_finalize and decided_at is not null then
     new_status := 'final';
     if home_sets > away_sets then
       new_winner := m.home_team_id; new_loser := m.away_team_id;

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { reopenMatch, submitScore, type SetScore } from '../lib/api'
 import { friendlyError } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { rulesFor, setTarget, setsNeeded, tallySets } from '../lib/scoring'
 import type { Division, Match, MatchSet, Team } from '../lib/types'
 import { Banner, Sheet } from './ui'
 
@@ -42,26 +43,23 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
   const awayTeam = match.away_team_id ? teamsById.get(match.away_team_id) : undefined
 
   const bestOf = match.best_of
-  const setsNeeded = Math.floor(bestOf / 2) + 1
+  const needed = setsNeeded(bestOf)
+  const rules = useMemo(() => rulesFor(division), [division])
 
-  const played = rows.filter((r) => !isBlank(r))
-  const tally = useMemo(() => {
-    let home = 0
-    let away = 0
-    for (const row of played) {
-      const h = num(row.home)
-      const a = num(row.away)
-      if (h > a) home++
-      else if (a > h) away++
-    }
-    return { home, away }
-  }, [played])
+  const played = useMemo(
+    () => rows.filter((r) => !isBlank(r)).map((r) => ({ home: num(r.home), away: num(r.away) })),
+    [rows],
+  )
+  const tally = useMemo(() => tallySets(played, bestOf, rules), [played, bestOf, rules])
 
-  const decided = tally.home >= setsNeeded || tally.away >= setsNeeded
-  const leader = tally.home > tally.away ? homeTeam?.name : awayTeam?.name
+  const decided = tally.decidedAt !== null
+  const leader = tally.homeSets > tally.awaySets ? homeTeam?.name : awayTeam?.name
 
-  const targetFor = (index: number) =>
-    bestOf > 1 && index === bestOf - 1 ? division.deciding_set_points : division.points_to_win
+  // A set left unfinished before the clinching one is almost always a typo,
+  // so block the save rather than banking a bogus set score.
+  const badSet = tally.firstIncompleteBeforeDecider
+
+  const targetFor = (index: number) => setTarget(index + 1, bestOf, rules)
 
   function setRow(index: number, side: 'home' | 'away', value: string) {
     const clean = value.replace(/\D/g, '').slice(0, 3)
@@ -72,7 +70,9 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
     setError(null)
     setBusy(true)
     try {
-      const payload: SetScore[] = played.map((row) => ({ home: num(row.home), away: num(row.away) }))
+      // Discard anything entered after the match was already decided.
+      const payload: SetScore[] =
+        finalize && tally.decidedAt !== null ? played.slice(0, tally.decidedAt) : played
       await submitScore(match.id, payload, finalize)
       onSaved()
       onClose()
@@ -106,7 +106,8 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
         </button>
       </div>
       <p className="tiny muted" style={{ marginTop: 0 }}>
-        Best of {bestOf} &middot; first to {setsNeeded} {setsNeeded === 1 ? 'set' : 'sets'}
+        Best of {bestOf} &middot; first to {needed} {needed === 1 ? 'set' : 'sets'} &middot; to{' '}
+        {rules.pointsToWin}, win by {rules.winBy}
         {match.court ? ` · Court ${match.court}` : ''}
       </p>
 
@@ -166,21 +167,23 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
       <hr className="rule" />
 
       <div className="spread small">
-        <span className="muted">Sets</span>
+        <span className="muted">Completed sets</span>
         <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {tally.home} – {tally.away}
+          {tally.homeSets} – {tally.awaySets}
         </strong>
       </div>
       <p className="tiny muted" style={{ margin: '6px 0 0' }}>
-        {played.length === 0
-          ? 'Enter at least one set.'
-          : decided
-            ? `Saving will finalize this match — ${leader} wins. The bracket advances automatically.`
-            : `Not decided yet; saving keeps the match live.`}
+        {badSet !== null
+          ? `Set ${badSet} is not a finished set — first to ${targetFor(badSet - 1)}, win by ${rules.winBy}. Fix it to finalize.`
+          : played.length === 0
+            ? 'Enter at least one set.'
+            : decided
+              ? `Saving will finalize this match — ${leader} wins. The bracket advances automatically.`
+              : `In progress: first to ${needed} ${needed === 1 ? 'set' : 'sets'} wins. Saving keeps the match live.`}
       </p>
 
       <div className="sticky-actions">
-        {decided ? (
+        {decided && badSet === null ? (
           <button className="primary" disabled={busy} onClick={() => save(true)}>
             {busy ? 'Saving…' : 'Save & finalize'}
           </button>

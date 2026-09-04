@@ -313,8 +313,6 @@ tr.advancing td:first-child { border-left: 3px solid var(--accent); padding-left
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  position: sticky;
-  left: 0;
 }
 .bracket-round .match { margin-bottom: 10px; }
 

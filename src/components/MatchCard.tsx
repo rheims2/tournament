@@ -32,7 +32,15 @@ export function MatchCard({ match, teamsById, sets, division, onSelect, showLabe
   const scoreLine = (side: 'home' | 'away') =>
     sets.map((s) => (side === 'home' ? s.home_score : s.away_score)).join('  ')
 
-  const bestOf = division ? (match.phase === 'pool' ? division.pool_best_of : division.bracket_best_of) : match.best_of
+  // A bye was never played, so set counts and a best-of are just noise.
+  const showSets = !match.is_bye && (sets.length > 0 || isFinal)
+  const bestOf = match.is_bye
+    ? 0
+    : division
+      ? match.phase === 'pool'
+        ? division.pool_best_of
+        : division.bracket_best_of
+      : match.best_of
 
   const body = (
     <>
@@ -55,14 +63,14 @@ export function MatchCard({ match, teamsById, sets, division, onSelect, showLabe
         {home.seed ? <span className="seed">{home.seed}</span> : null}
         <span className={`name ${home.tbd ? 'tbd' : ''}`}>{home.text}</span>
         {sets.length > 0 ? <span className="pts">{scoreLine('home')}</span> : null}
-        <span className="sets">{sets.length > 0 || isFinal ? match.home_sets_won : ''}</span>
+        <span className="sets">{showSets ? match.home_sets_won : ''}</span>
       </div>
 
       <div className={`side ${awayWon ? 'won' : isFinal ? 'lost' : ''}`}>
         {away.seed ? <span className="seed">{away.seed}</span> : null}
         <span className={`name ${away.tbd ? 'tbd' : ''}`}>{away.text}</span>
         {sets.length > 0 ? <span className="pts">{scoreLine('away')}</span> : null}
-        <span className="sets">{sets.length > 0 || isFinal ? match.away_sets_won : ''}</span>
+        <span className="sets">{showSets ? match.away_sets_won : ''}</span>
       </div>
     </>
   )
