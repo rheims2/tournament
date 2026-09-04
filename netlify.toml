@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Client-side routing: every path that is not a real file serves the app shell,
+# so opening /games directly (or refreshing it) works.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
