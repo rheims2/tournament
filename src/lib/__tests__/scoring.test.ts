@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { isSetComplete, setTarget, tallySets, type MatchFormat, type ScoringRules } from '../scoring'
+import {
+  isSetComplete,
+  poolScoringMode,
+  rulesFor,
+  setTarget,
+  tallySets,
+  type MatchFormat,
+  type ScoringRules,
+} from '../scoring'
 
 const rules: ScoringRules = {
   pointsToWin: 25,
@@ -179,5 +187,32 @@ describe('fixed-set matches', () => {
     const t = tallySets([{ home: 14, away: 12 }, { home: 25, away: 20 }], fixed(2), twoTo25)
     expect(t.firstIncompleteBeforeDecider).toBeNull()
     expect(t.decidedAt).toBeNull() // only one completed set of two
+  })
+})
+
+describe('a division row from before the fixed-set migration', () => {
+  // Only the columns migration 0001 created. A deploy can reach browsers
+  // before its migration runs, and pool scoring must not silently loosen.
+  const legacy = {
+    points_to_win: 25,
+    deciding_set_points: 15,
+    win_by: 2,
+    point_cap: null,
+  } as unknown as Parameters<typeof rulesFor>[0]
+
+  it('falls back to the division target instead of undefined', () => {
+    const r = rulesFor(legacy, 'pool')
+    expect(r.pointsToWin).toBe(25)
+    expect(r.decidingSetPoints).toBe(15)
+    expect(r.startScore).toBe(0)
+  })
+
+  it('still refuses to call 5-3 a completed set', () => {
+    expect(isSetComplete(5, 3, 1, 3, rulesFor(legacy, 'pool'))).toBe(false)
+    expect(isSetComplete(25, 20, 1, 3, rulesFor(legacy, 'pool'))).toBe(true)
+  })
+
+  it('treats a missing mode as best-of', () => {
+    expect(poolScoringMode(legacy)).toBe('best_of')
   })
 })

@@ -195,7 +195,7 @@ export async function generatePools(
     // A fixed-set division plays a set count chosen by how big this pool is.
     const setsToPlay =
       division.pool_scoring_mode === 'fixed_sets'
-        ? setsForPoolSize(group.length, division.pool_sets_by_size)
+        ? setsForPoolSize(group.length, division.pool_sets_by_size ?? undefined)
         : null
 
     for (const planned of planPoolMatches(pool, group, division.pool_best_of, setsToPlay)) {

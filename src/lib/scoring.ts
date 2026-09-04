@@ -18,14 +18,18 @@ export interface ScoringRules {
 export function rulesFor(division: Division, phase: MatchPhase = 'bracket'): ScoringRules {
   if (phase === 'pool') {
     const fixed = division.pool_scoring_mode === 'fixed_sets'
+    // Fall back to the division-wide values when the pool columns are absent.
+    // A deployment can reach browsers before its migration has been run, and a
+    // missing target would otherwise make any 2-point gap look like a won set.
+    const target = division.pool_points_to_win ?? division.points_to_win
     return {
-      pointsToWin: division.pool_points_to_win,
+      pointsToWin: target,
       // Every set of a fixed-set match is played to the same number; there is
       // no shortened deciding set because nothing is "deciding".
-      decidingSetPoints: fixed ? division.pool_points_to_win : division.deciding_set_points,
+      decidingSetPoints: fixed ? target : division.deciding_set_points,
       winBy: division.win_by,
       pointCap: division.point_cap,
-      startScore: division.pool_start_score,
+      startScore: division.pool_start_score ?? 0,
     }
   }
   return {
@@ -38,7 +42,7 @@ export function rulesFor(division: Division, phase: MatchPhase = 'bracket'): Sco
 }
 
 export const poolScoringMode = (division: Division): PoolScoringMode =>
-  division.pool_scoring_mode
+  division.pool_scoring_mode ?? 'best_of'
 
 /** The deciding set of a best-of-3 or best-of-5 is played to a lower target. */
 export function setTarget(setNumber: number, maxSets: number, rules: ScoringRules): number {

@@ -49,6 +49,8 @@ export function setsForPoolSize(
   poolSize: number,
   map: Record<string, number> = DEFAULT_SETS_BY_POOL_SIZE,
 ): number {
+  // Guard against a row written before the column existed.
+  if (!map || Object.keys(map).length === 0) map = DEFAULT_SETS_BY_POOL_SIZE
   const exact = map[String(poolSize)]
   if (exact) return exact
   // Unlisted size: fall back to the largest listed size at or below it, then
