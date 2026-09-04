@@ -10,6 +10,7 @@ morning, brackets in the afternoon, and scores that advance teams on their own.
 - **Enter a score and the bracket advances**, including through byes.
 - **Three roles**: read only, enter scores, admin.
 - **Installs to a phone's home screen** and updates live on every device at once.
+- **Light interface**, built to stay readable on a phone in a bright gym.
 
 Spectators need no account at all — anyone with the link can follow along.
 
@@ -202,6 +203,7 @@ src/lib/standings.ts    pool records and the tiebreaker ladder
 src/lib/scoring.ts      when a set is won and when a match is decided
 src/lib/api.ts          every read and write against Supabase
 src/pages/              Games, Divisions, Division detail, Admin, Account
+src/styles/app.css      the light theme -- colours are tokens on :root
 supabase/migrations/    the schema, roles, RLS and auto-advancement
 supabase/tests/         SQL exercised by scripts/test-db.sh
 ```
