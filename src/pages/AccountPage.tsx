@@ -18,6 +18,9 @@ export function AccountPage() {
           </p>
         </Card>
         <LoginPage />
+        <p className="tiny muted center">
+          Build {__BUILD_ID__} · {__BUILD_DATE__} UTC
+        </p>
       </>
     )
   }
@@ -43,6 +46,16 @@ export function AccountPage() {
         <button style={{ width: '100%' }} onClick={() => void signOut().then(() => navigate('/games'))}>
           Sign out
         </button>
+      </Card>
+
+      <Card title="This device">
+        <p className="small muted" style={{ margin: 0 }}>
+          Running build <strong>{__BUILD_ID__}</strong>, made {__BUILD_DATE__} UTC.
+        </p>
+        <p className="tiny muted" style={{ marginBottom: 0 }}>
+          If this does not match the latest deploy, your phone is holding a cached copy —
+          close the app or tab completely and reopen it.
+        </p>
       </Card>
 
       <Card title="Roles">

@@ -1,8 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
+
+// Vercel exposes the commit it built from; fall back to a local git read so a
+// dev build is identifiable too. Surfaced in the app so anyone can tell which
+// build their phone is actually running.
+const buildId =
+  process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ??
+  (() => {
+    try {
+      return execSync('git rev-parse --short HEAD').toString().trim()
+    } catch {
+      return 'dev'
+    }
+  })()
 
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
   plugins: [
     react(),
     VitePWA({
