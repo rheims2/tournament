@@ -10,6 +10,8 @@ import {
   splitIntoPools,
 } from '../pools'
 import type { Team } from '../types'
+import { generateBracket, type PlannedMatch, type SeededTeam } from '../bracket'
+import type { BracketFormat } from '../types'
 
 describe('pool division', () => {
   it('never puts more than the max in a pool', () => {
@@ -186,5 +188,134 @@ describe('planning fixed-set pool matches', () => {
     const planned = planPoolMatches({ id: 'p', name: 'A' }, teams(3), 3)
     expect(planned.every((m) => m.setsToPlay === null)).toBe(true)
     expect(planned.every((m) => m.bestOf === 3)).toBe(true)
+  })
+})
+
+describe('scheduling respects the bracket feed chain', () => {
+  const start = new Date('2026-05-02T13:00:00.000Z')
+
+  /** Lay a real generated bracket out and report each match's time slot. */
+  function layOut(teamCount: number, format: BracketFormat, courts: string[]) {
+    const seeds: SeededTeam[] = Array.from({ length: teamCount }, (_, i) => ({
+      seed: i + 1,
+      teamId: `team-${i + 1}`,
+      teamName: `Team ${i + 1}`,
+      label: `Seed ${i + 1}`,
+    }))
+    const planned = generateBracket({ seeds, format, bestOf: 3 }).filter((m) => !m.isBye)
+
+    const slots = scheduleMatches(
+      planned.map((m) => ({
+        id: m.id,
+        round: m.round,
+        teamIds: [m.homeTeamId, m.awayTeamId],
+        sourceMatchIds: [m.homeSourceMatchId, m.awaySourceMatchId],
+      })),
+      { courts, startAt: start, minutesPerSlot: 45 },
+    )
+
+    const timeOf = new Map(slots.map((s) => [s.matchId, s.scheduledAt]))
+    /** Scheduled time as a number; fails loudly if a match was never placed. */
+    const at = (id: string): number => {
+      const iso = timeOf.get(id)
+      expect(iso, `match ${id} was never scheduled`).toBeTruthy()
+      return new Date(iso!).getTime()
+    }
+    return { planned, slots, timeOf, at }
+  }
+
+  /** No match may start at or before anything that feeds it. */
+  function assertFeedOrder(planned: PlannedMatch[], timeOf: Map<string, string>) {
+    for (const match of planned) {
+      const mine = timeOf.get(match.id)
+      expect(mine, `${match.label} was never scheduled`).toBeTruthy()
+      for (const src of [match.homeSourceMatchId, match.awaySourceMatchId]) {
+        if (!src) continue
+        const feeder = timeOf.get(src)
+        if (!feeder) continue // a bye: already settled
+        const feederLabel = planned.find((m) => m.id === src)?.label
+        expect(
+          new Date(mine!).getTime(),
+          `${match.label} starts at or before its feeder ${feederLabel}`,
+        ).toBeGreaterThan(new Date(feeder).getTime())
+      }
+    }
+  }
+
+  it('never starts a consolation opener alongside the round it feeds from', () => {
+    // The reported case. It only surfaces when round 1 does not itself fill
+    // every court -- with spare courts the old scheduler dropped the
+    // consolation opener straight into the same slot as the quarterfinals.
+    const cases: [number, string[]][] = [
+      [8, ['1', '2', '3', '4', '5', '6']], // more courts than round-1 matches
+      [8, ['1', '2', '3', '4']],           // exactly as many
+      [6, ['1', '2', '3']],                // byes leave only 2 real openers
+      [5, ['1', '2']],                     // byes leave only 1
+    ]
+    for (const [teams, courts] of cases) {
+      const { planned, timeOf, at } = layOut(teams, 'single_consolation', courts)
+      assertFeedOrder(planned, timeOf)
+
+      const openers = planned.filter((m) => m.bracket === 'winners' && m.round === 1)
+      const lastOpener = Math.max(...openers.map((m) => at(m.id)))
+
+      for (const c of planned.filter((m) => m.bracket === 'consolation' && m.round === 1)) {
+        expect(
+          at(c.id),
+          `${teams} teams / ${courts.length} courts: ${c.label} is not after round 1`,
+        ).toBeGreaterThan(lastOpener)
+      }
+    }
+  })
+
+  it('does not schedule the grand final first', () => {
+    // Grand Final is "round 1, slot 0", so round-ordering alone put it first.
+    const { planned, timeOf, slots, at } = layOut(8, 'double', ['1', '2'])
+    assertFeedOrder(planned, timeOf)
+
+    const earliest = Math.min(...slots.map((s) => new Date(s.scheduledAt).getTime()))
+    const latest = Math.max(...slots.map((s) => new Date(s.scheduledAt).getTime()))
+    const grandFinal = planned.find((m) => m.bracket === 'grand_final')!
+
+    expect(at(grandFinal.id)).toBe(latest)
+    expect(at(grandFinal.id)).toBeGreaterThan(earliest)
+  })
+
+  it('keeps the losers bracket behind the winners rounds that feed it', () => {
+    const { planned, timeOf } = layOut(8, 'double', ['1', '2', '3'])
+    assertFeedOrder(planned, timeOf)
+  })
+
+  it('holds for every format and field size, on one court or many', () => {
+    for (const format of ['single', 'single_consolation', 'double'] as BracketFormat[]) {
+      for (const teams of [4, 5, 6, 7, 8, 11, 16]) {
+        for (const courts of [['1'], ['1', '2'], ['1', '2', '3', '4']]) {
+          const { planned, timeOf, slots } = layOut(teams, format, courts)
+          expect(slots.length, `${format}/${teams}/${courts.length}ct: unscheduled matches`).toBe(planned.length)
+          assertFeedOrder(planned, timeOf)
+        }
+      }
+    }
+  })
+
+  it('still packs independent matches into the same slot', () => {
+    // Ordering must not become needlessly serial: 4 QFs on 2 courts is 2 slots.
+    const { planned, timeOf } = layOut(8, 'single', ['1', '2'])
+    const qfTimes = planned
+      .filter((m) => m.label.startsWith('Quarterfinal'))
+      .map((m) => timeOf.get(m.id))
+    expect(new Set(qfTimes).size).toBe(2)
+    expect(qfTimes.every(Boolean)).toBe(true)
+  })
+
+  it('leaves pool play, which has no feeds, ordered by round', () => {
+    const slots = scheduleMatches(
+      [
+        { id: 'r2', round: 2, teamIds: ['a', 'c'] },
+        { id: 'r1', round: 1, teamIds: ['a', 'b'] },
+      ],
+      { courts: ['1'], startAt: start, minutesPerSlot: 30 },
+    )
+    expect(slots.map((s) => s.matchId)).toEqual(['r1', 'r2'])
   })
 })

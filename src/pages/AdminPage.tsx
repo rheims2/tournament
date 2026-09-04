@@ -685,8 +685,9 @@ function DivisionAdmin({ divisionId, busy, run }: { divisionId: string; busy: bo
           </div>
           <p className="tiny muted" style={{ marginBottom: 0 }}>
             Games are laid out across {courtList.length || 0} courts in {slotMinutes}-minute slots,
-            never putting a team on two courts at once. Set the bracket start time before scheduling
-            the afternoon.
+            never putting a team on two courts at once and never starting a match before the one
+            that feeds it — a consolation or losers-bracket opener always lands after the round it
+            takes its teams from. Set the bracket start time before scheduling the afternoon.
           </p>
 
           <hr className="rule" />

@@ -75,7 +75,8 @@ For a real tournament, deploy the built site anywhere static
    for a pool of 4, 3 games for a pool of 3.
 5. **Schedule pool play.** Enter your courts (`1, 2, 3`), the first serve time,
    and how long a slot runs. Games are laid out across the courts in order,
-   never scheduling a team twice at the same time.
+   never scheduling a team twice at the same time, and never starting a match
+   before the one that feeds it.
 6. **Enter scores** from the Games tab as they come in. Anyone with the
    scorekeeper role can do this from their own phone.
 
@@ -85,7 +86,10 @@ For a real tournament, deploy the built site anywhere static
    outranks every runner-up, and within a finishing position teams are ordered
    by record, then set ratio, then point ratio. Check the **Seeding** tab of a
    division to see it before you commit.
-8. **Schedule the bracket** with an afternoon start time.
+8. **Schedule the bracket** with an afternoon start time. Matches are ordered
+   by what they depend on rather than by round number, so a consolation or
+   losers-bracket opener is placed after the round its teams come from, and the
+   grand final lands last.
 9. **Enter scores.** Each result drops the winner into the next match
    automatically. Teams with a bye are already sitting in round two.
 

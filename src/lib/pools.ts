@@ -153,6 +153,12 @@ export interface SchedulableMatch {
   id: string
   round: number
   teamIds: (string | null)[]
+  /**
+   * Matches whose result feeds this one. A consolation opener has no teams yet
+   * -- they are "the loser of QF1" -- so team conflicts cannot order it; only
+   * the feed can.
+   */
+  sourceMatchIds?: (string | null)[]
 }
 
 export interface ScheduleSlot {
@@ -168,9 +174,51 @@ export interface ScheduleOptions {
 }
 
 /**
- * Greedily lay matches out across courts and time slots. Within a time slot a
- * team never appears twice, and matches are taken in round order so a pool's
- * first-round games are played before its second-round games.
+ * How many matches deep in the feed chain this one sits: 0 for anything that
+ * can be played immediately, 1 for a match awaiting a depth-0 result, and so
+ * on. Round numbers cannot do this job because they restart inside each
+ * bracket -- a consolation opener, a losers-bracket opener and the grand final
+ * are all "round 1".
+ *
+ * A source outside the batch is treated as already settled: it is a bye, or a
+ * match that has been played.
+ */
+export function dependencyDepth(matches: SchedulableMatch[]): Map<string, number> {
+  const byId = new Map(matches.map((m) => [m.id, m]))
+  const depth = new Map<string, number>()
+  const visiting = new Set<string>()
+
+  const walk = (id: string): number => {
+    const cached = depth.get(id)
+    if (cached !== undefined) return cached
+    const match = byId.get(id)
+    if (!match) return -1
+    // A bracket is acyclic; this only guards against corrupt data.
+    if (visiting.has(id)) return 0
+
+    visiting.add(id)
+    let deepest = 0
+    for (const source of match.sourceMatchIds ?? []) {
+      if (!source) continue
+      const sourceDepth = walk(source)
+      if (sourceDepth >= 0) deepest = Math.max(deepest, sourceDepth + 1)
+    }
+    visiting.delete(id)
+
+    depth.set(id, deepest)
+    return deepest
+  }
+
+  for (const match of matches) walk(match.id)
+  return depth
+}
+
+/**
+ * Greedily lay matches out across courts and time slots.
+ *
+ * Three rules hold: a team never appears twice in one slot, a match never
+ * starts in the same slot as (or earlier than) a match feeding it, and within
+ * a pool the earlier round goes first.
  */
 export function scheduleMatches(
   matches: SchedulableMatch[],
@@ -178,9 +226,25 @@ export function scheduleMatches(
 ): ScheduleSlot[] {
   if (courts.length === 0 || matches.length === 0) return []
 
-  const remaining = [...matches].sort((a, b) => a.round - b.round)
+  const depth = dependencyDepth(matches)
+  const inBatch = new Set(matches.map((m) => m.id))
+  const remaining = [...matches].sort(
+    (a, b) => (depth.get(a.id) ?? 0) - (depth.get(b.id) ?? 0) || a.round - b.round,
+  )
+
   const assignments: ScheduleSlot[] = []
+  const slotOf = new Map<string, number>()
   let slotIndex = 0
+  let lastRemaining = remaining.length
+  let stalled = 0
+
+  /** Every feeder must already sit in a strictly earlier slot. */
+  const feedersSettled = (match: SchedulableMatch, slot: number) =>
+    (match.sourceMatchIds ?? []).every((source) => {
+      if (!source || !inBatch.has(source)) return true
+      const placed = slotOf.get(source)
+      return placed !== undefined && placed < slot
+    })
 
   while (remaining.length > 0 && slotIndex < 500) {
     const busy = new Set<string>()
@@ -190,7 +254,7 @@ export function scheduleMatches(
     for (let i = 0; i < remaining.length && courtIndex < courts.length; ) {
       const match = remaining[i]
       const teams = match.teamIds.filter((t): t is string => Boolean(t))
-      if (teams.some((t) => busy.has(t))) {
+      if (!feedersSettled(match, slotIndex) || teams.some((t) => busy.has(t))) {
         i++
         continue
       }
@@ -200,13 +264,21 @@ export function scheduleMatches(
         court: courts[courtIndex],
         scheduledAt: at.toISOString(),
       })
+      slotOf.set(match.id, slotIndex)
       courtIndex++
       remaining.splice(i, 1)
     }
 
-    // No match could be placed in this slot -- avoid spinning forever.
-    if (courtIndex === 0) break
     slotIndex++
+
+    // A slot can legitimately place nothing while a feeder is still being
+    // played, but never for long. This only catches corrupt data.
+    if (remaining.length === lastRemaining) {
+      if (++stalled > 20) break
+    } else {
+      stalled = 0
+      lastRemaining = remaining.length
+    }
   }
 
   return assignments

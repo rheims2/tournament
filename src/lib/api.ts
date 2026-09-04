@@ -232,7 +232,14 @@ export async function scheduleDivision(
 ): Promise<void> {
   const schedulable = matches
     .filter((m) => !m.is_bye)
-    .map((m) => ({ id: m.id, round: m.round, teamIds: [m.home_team_id, m.away_team_id] }))
+    .map((m) => ({
+      id: m.id,
+      round: m.round,
+      teamIds: [m.home_team_id, m.away_team_id],
+      // Without these a bracket match whose teams are still undecided looks
+      // free to schedule at any time, including alongside its own feeder.
+      sourceMatchIds: [m.home_source_match_id, m.away_source_match_id],
+    }))
 
   const slots = scheduleMatches(schedulable, options)
   await Promise.all(
