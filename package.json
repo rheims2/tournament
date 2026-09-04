@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false --pretty"
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false --pretty",
+    "test:db": "bash scripts/test-db.sh",
+    "test:all": "npm run test && npm run test:db"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
