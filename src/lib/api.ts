@@ -11,7 +11,7 @@ import type {
   Tournament,
 } from './types'
 import { generateBracket, seedFromPools, type PlannedMatch } from './bracket'
-import { planPoolMatches, poolName, scheduleMatches, splitIntoPools } from './pools'
+import { planPoolMatches, poolName, scheduleMatches, setsForPoolSize, splitIntoPools } from './pools'
 import { rankPool } from './standings'
 
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
@@ -192,7 +192,13 @@ export async function generatePools(
         supabase.from('teams').update({ pool_id: pool.id, bracket_seed: null }).eq('id', team.id),
       )
     }
-    for (const planned of planPoolMatches(pool, group, division.pool_best_of)) {
+    // A fixed-set division plays a set count chosen by how big this pool is.
+    const setsToPlay =
+      division.pool_scoring_mode === 'fixed_sets'
+        ? setsForPoolSize(group.length, division.pool_sets_by_size)
+        : null
+
+    for (const planned of planPoolMatches(pool, group, division.pool_best_of, setsToPlay)) {
       matchRows.push({
         id: planned.id,
         division_id: division.id,
@@ -204,6 +210,7 @@ export async function generatePools(
         home_team_id: planned.homeTeamId,
         away_team_id: planned.awayTeamId,
         best_of: planned.bestOf,
+        sets_to_play: planned.setsToPlay,
       })
     }
   })
@@ -243,6 +250,7 @@ export async function scheduleDivision(
 // ---------------------------------------------------------------------------
 
 export function buildSeeds(division: Division, data: DivisionData) {
+  const mode = division.pool_scoring_mode
   const poolResults = data.pools
     .map((pool) => ({
       poolName: `Pool ${pool.name}`,
@@ -250,13 +258,14 @@ export function buildSeeds(division: Division, data: DivisionData) {
         data.teams.filter((t) => t.pool_id === pool.id),
         data.matches.filter((m) => m.phase === 'pool' && m.pool_id === pool.id),
         data.setsByMatch,
+        mode,
       ),
     }))
     .filter((p) => p.standings.length > 0)
 
   return {
     poolResults,
-    seeds: seedFromPools(poolResults),
+    seeds: seedFromPools(poolResults, mode),
     format: division.bracket_format,
   }
 }

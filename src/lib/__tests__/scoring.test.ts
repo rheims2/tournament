@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { isSetComplete, setTarget, tallySets, type ScoringRules } from '../scoring'
+import { isSetComplete, setTarget, tallySets, type MatchFormat, type ScoringRules } from '../scoring'
 
 const rules: ScoringRules = {
   pointsToWin: 25,
   decidingSetPoints: 15,
   winBy: 2,
   pointCap: null,
+  startScore: 0,
 }
 const capped: ScoringRules = { ...rules, pointCap: 27 }
+
+/** Conventional best-of-N. */
+const bestOf = (n: number): MatchFormat => ({ setsToPlay: null, bestOf: n })
+/** Play exactly N sets, whatever the score. */
+const fixed = (n: number): MatchFormat => ({ setsToPlay: n, bestOf: n })
 
 describe('set targets', () => {
   it('drops to the deciding-set target for the last set', () => {
@@ -57,14 +63,14 @@ describe('set completion', () => {
 
 describe('match tally', () => {
   it('does not finalize on an in-progress second set', () => {
-    const t = tallySets([{ home: 25, away: 21 }, { home: 14, away: 12 }], 3, rules)
+    const t = tallySets([{ home: 25, away: 21 }, { home: 14, away: 12 }], bestOf(3), rules)
     expect(t.homeSets).toBe(1)
     expect(t.awaySets).toBe(0)
     expect(t.decidedAt).toBeNull()
   })
 
   it('finalizes a straight-sets win', () => {
-    const t = tallySets([{ home: 25, away: 21 }, { home: 25, away: 19 }], 3, rules)
+    const t = tallySets([{ home: 25, away: 21 }, { home: 25, away: 19 }], bestOf(3), rules)
     expect([t.homeSets, t.awaySets]).toEqual([2, 0])
     expect(t.decidedAt).toBe(2)
   })
@@ -72,7 +78,7 @@ describe('match tally', () => {
   it('finalizes a three-set win on the deciding set', () => {
     const t = tallySets(
       [{ home: 25, away: 21 }, { home: 20, away: 25 }, { home: 15, away: 11 }],
-      3,
+      bestOf(3),
       rules,
     )
     expect([t.homeSets, t.awaySets]).toEqual([2, 1])
@@ -82,7 +88,7 @@ describe('match tally', () => {
   it('flags a surplus set entered after the match was already won', () => {
     const t = tallySets(
       [{ home: 25, away: 21 }, { home: 25, away: 19 }, { home: 5, away: 3 }],
-      3,
+      bestOf(3),
       rules,
     )
     expect(t.decidedAt).toBe(2)
@@ -92,7 +98,7 @@ describe('match tally', () => {
   it('flags an unfinished set that comes before the decider', () => {
     const t = tallySets(
       [{ home: 25, away: 21 }, { home: 14, away: 12 }, { home: 25, away: 19 }],
-      3,
+      bestOf(3),
       rules,
     )
     expect(t.decidedAt).toBe(3)
@@ -100,13 +106,78 @@ describe('match tally', () => {
   })
 
   it('handles a single-set match', () => {
-    const t = tallySets([{ home: 25, away: 23 }], 1, rules)
+    const t = tallySets([{ home: 25, away: 23 }], bestOf(1), rules)
     expect(t.decidedAt).toBe(1)
     expect(t.homeSets).toBe(1)
   })
 
   it('reports nothing for an empty sheet', () => {
-    const t = tallySets([], 3, rules)
+    const t = tallySets([], bestOf(3), rules)
     expect(t).toMatchObject({ homeSets: 0, awaySets: 0, decidedAt: null })
+  })
+})
+
+describe('fixed-set matches', () => {
+  // The tournament format: two sets to 25, both played out, teams start 4-4.
+  const twoTo25: ScoringRules = { ...rules, decidingSetPoints: 25, startScore: 4 }
+
+  it('does not finish after one set even when a side is ahead', () => {
+    const t = tallySets([{ home: 25, away: 18 }], fixed(2), twoTo25)
+    expect(t.homeSets).toBe(1)
+    expect(t.decidedAt).toBeNull()
+    expect(t.setsRemaining).toBe(1)
+  })
+
+  it('finishes once both sets are played', () => {
+    const t = tallySets([{ home: 25, away: 18 }, { home: 25, away: 20 }], fixed(2), twoTo25)
+    expect(t.decidedAt).toBe(2)
+    expect(t.isDraw).toBe(false)
+    expect(t.setsRemaining).toBe(0)
+  })
+
+  it('allows a 1-1 draw', () => {
+    const t = tallySets([{ home: 25, away: 18 }, { home: 21, away: 25 }], fixed(2), twoTo25)
+    expect([t.homeSets, t.awaySets]).toEqual([1, 1])
+    expect(t.decidedAt).toBe(2)
+    expect(t.isDraw).toBe(true)
+  })
+
+  it('plays the third set of a three-set pool match even at 2-0', () => {
+    // A best-of-3 would stop here; a fixed three-set match does not.
+    const twoNil = tallySets([{ home: 25, away: 18 }, { home: 25, away: 20 }], fixed(3), twoTo25)
+    expect(twoNil.decidedAt).toBeNull()
+    expect(twoNil.setsRemaining).toBe(1)
+
+    const all = tallySets(
+      [{ home: 25, away: 18 }, { home: 25, away: 20 }, { home: 19, away: 25 }],
+      fixed(3),
+      twoTo25,
+    )
+    expect([all.homeSets, all.awaySets]).toEqual([2, 1])
+    expect(all.decidedAt).toBe(3)
+    expect(all.isDraw).toBe(false)
+  })
+
+  it('never draws an odd fixed-set match', () => {
+    const t = tallySets(
+      [{ home: 25, away: 18 }, { home: 19, away: 25 }, { home: 25, away: 23 }],
+      fixed(3),
+      twoTo25,
+    )
+    expect(t.isDraw).toBe(false)
+    expect(t.homeSets).toBe(2)
+  })
+
+  it('plays every set to the same target -- no shortened decider', () => {
+    // 15-11 would end a best-of-3 decider, but here the target is 25.
+    const t = tallySets([{ home: 25, away: 18 }, { home: 15, away: 11 }], fixed(2), twoTo25)
+    expect(t.awaySets + t.homeSets).toBe(1)
+    expect(t.decidedAt).toBeNull()
+  })
+
+  it('still rejects an unfinished set before the last one', () => {
+    const t = tallySets([{ home: 14, away: 12 }, { home: 25, away: 20 }], fixed(2), twoTo25)
+    expect(t.firstIncompleteBeforeDecider).toBeNull()
+    expect(t.decidedAt).toBeNull() // only one completed set of two
   })
 })

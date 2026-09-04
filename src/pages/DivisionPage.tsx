@@ -36,11 +36,11 @@ export function DivisionPage() {
         pool,
         teams: poolTeams,
         matches: poolMatches,
-        standings: rankPool(poolTeams, poolMatches, data.setsByMatch),
+        standings: rankPool(poolTeams, poolMatches, data.setsByMatch, division?.pool_scoring_mode),
         complete: poolMatches.length > 0 && poolMatches.every((m) => m.status === 'final'),
       }
     })
-  }, [data])
+  }, [data, division])
 
   const seeds = useMemo(
     () => (division && data ? buildSeeds(division, data).seeds : []),
@@ -94,7 +94,7 @@ export function DivisionPage() {
                     {matches.filter((m) => m.status === 'final').length}/{matches.length} played
                   </span>
                 </div>
-                <StandingsTable records={standings} />
+                <StandingsTable records={standings} mode={division.pool_scoring_mode} />
                 <details style={{ marginTop: 10 }}>
                   <summary className="small muted" style={{ cursor: 'pointer' }}>
                     {matches.length} games
@@ -106,7 +106,6 @@ export function DivisionPage() {
                         match={match}
                         sets={data.setsByMatch.get(match.id) ?? []}
                         teamsById={data.teamsById}
-                        division={division}
                         onSelect={canScore ? setSelected : undefined}
                       />
                     ))}
@@ -125,7 +124,6 @@ export function DivisionPage() {
 
       {tab === 'bracket' ? (
         <BracketView
-          division={division}
           matches={bracketMatches}
           teamsById={data.teamsById}
           setsByMatch={data.setsByMatch}
@@ -141,7 +139,11 @@ export function DivisionPage() {
             <h3>Bracket seeding</h3>
             <p className="tiny muted" style={{ marginTop: -4 }}>
               Pool winners take the top seeds, then runners-up, and so on. Within a finishing
-              position teams are ordered by record, set ratio, then point ratio.
+              position teams are ordered by{' '}
+              {division.pool_scoring_mode === 'fixed_sets'
+                ? 'sets won, then point differential'
+                : 'record, set ratio, then point ratio'}
+              .
             </p>
             <div className="table-wrap">
               <table>

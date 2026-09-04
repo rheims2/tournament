@@ -179,7 +179,6 @@ export function GamesPage() {
               match={row.match}
               sets={row.sets}
               teamsById={row.teamsById}
-              division={row.division}
               onSelect={canScore ? () => setSelected(row) : undefined}
             />
           ))}

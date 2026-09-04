@@ -23,6 +23,7 @@ const record = (over: Partial<TeamRecord>): TeamRecord => ({
   played: 3,
   matchWins: 0,
   matchLosses: 0,
+  matchTies: 0,
   setWins: 0,
   setLosses: 0,
   pointsFor: 0,

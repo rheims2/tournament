@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { reopenMatch, submitScore, type SetScore } from '../lib/api'
 import { friendlyError } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { rulesFor, setTarget, setsNeeded, tallySets } from '../lib/scoring'
+import { formatFor, isFixedSets, maxSetsOf, rulesFor, setTarget, setsNeeded, tallySets } from '../lib/scoring'
 import type { Division, Match, MatchSet, Team } from '../lib/types'
 import { Banner, Sheet } from './ui'
 
@@ -20,10 +20,20 @@ interface Row {
   away: string
 }
 
-const toRows = (sets: MatchSet[]): Row[] =>
-  sets.length > 0
-    ? sets.map((s) => ({ home: String(s.home_score), away: String(s.away_score) }))
-    : [{ home: '', away: '' }]
+const toRows = (sets: MatchSet[], startScore: number, minRows: number): Row[] => {
+  const rows: Row[] =
+    sets.length > 0
+      ? sets.map((s) => ({ home: String(s.home_score), away: String(s.away_score) }))
+      : []
+  // A format that starts both teams at 4 pre-fills 4-4 so the scorekeeper only
+  // types what actually changed.
+  const blank = (): Row =>
+    startScore > 0
+      ? { home: String(startScore), away: String(startScore) }
+      : { home: '', away: '' }
+  while (rows.length < Math.max(1, minRows)) rows.push(blank())
+  return rows
+}
 
 const num = (value: string) => {
   const parsed = Number.parseInt(value, 10)
@@ -35,22 +45,28 @@ const isBlank = (row: Row) => row.home.trim() === '' && row.away.trim() === ''
 
 export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved }: Props) {
   const { isAdmin } = useAuth()
-  const [rows, setRows] = useState<Row[]>(() => toRows(sets))
+  const rules = useMemo(() => rulesFor(division, match.phase), [division, match.phase])
+  const format = useMemo(() => formatFor(match), [match])
+  const fixedSets = isFixedSets(format)
+  const maxSets = maxSetsOf(format)
+
+  const [rows, setRows] = useState<Row[]>(() =>
+    // A fixed-set match shows every set up front -- they all get played.
+    toRows(sets, rules.startScore, fixedSets ? maxSets : 1),
+  )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const homeTeam = match.home_team_id ? teamsById.get(match.home_team_id) : undefined
   const awayTeam = match.away_team_id ? teamsById.get(match.away_team_id) : undefined
 
-  const bestOf = match.best_of
-  const needed = setsNeeded(bestOf)
-  const rules = useMemo(() => rulesFor(division), [division])
+  const needed = setsNeeded(format.bestOf)
 
   const played = useMemo(
     () => rows.filter((r) => !isBlank(r)).map((r) => ({ home: num(r.home), away: num(r.away) })),
     [rows],
   )
-  const tally = useMemo(() => tallySets(played, bestOf, rules), [played, bestOf, rules])
+  const tally = useMemo(() => tallySets(played, format, rules), [played, format, rules])
 
   const decided = tally.decidedAt !== null
   const leader = tally.homeSets > tally.awaySets ? homeTeam?.name : awayTeam?.name
@@ -59,7 +75,7 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
   // so block the save rather than banking a bogus set score.
   const badSet = tally.firstIncompleteBeforeDecider
 
-  const targetFor = (index: number) => setTarget(index + 1, bestOf, rules)
+  const targetFor = (index: number) => setTarget(index + 1, maxSets, rules)
 
   function setRow(index: number, side: 'home' | 'away', value: string) {
     const clean = value.replace(/\D/g, '').slice(0, 3)
@@ -106,8 +122,12 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
         </button>
       </div>
       <p className="tiny muted" style={{ marginTop: 0 }}>
-        Best of {bestOf} &middot; first to {needed} {needed === 1 ? 'set' : 'sets'} &middot; to{' '}
-        {rules.pointsToWin}, win by {rules.winBy}
+        {fixedSets
+          ? `${maxSets} ${maxSets === 1 ? 'set' : 'sets'}, all played`
+          : `Best of ${format.bestOf} · first to ${needed} ${needed === 1 ? 'set' : 'sets'}`}
+        {' · '}
+        {rules.startScore > 0 ? `from ${rules.startScore}-${rules.startScore} ` : ''}
+        to {rules.pointsToWin}, win by {rules.winBy}
         {match.court ? ` · Court ${match.court}` : ''}
       </p>
 
@@ -146,7 +166,7 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
           <button
             className="small ghost drop"
             aria-label={`Remove set ${index + 1}`}
-            disabled={rows.length === 1}
+            disabled={rows.length === 1 || fixedSets}
             onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
           >
             ✕
@@ -154,7 +174,7 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
         </div>
       ))}
 
-      {rows.length < bestOf ? (
+      {rows.length < maxSets && !fixedSets ? (
         <button
           className="small ghost"
           style={{ width: '100%' }}
@@ -178,8 +198,14 @@ export function ScoreSheet({ match, division, sets, teamsById, onClose, onSaved 
           : played.length === 0
             ? 'Enter at least one set.'
             : decided
-              ? `Saving will finalize this match — ${leader} wins. The bracket advances automatically.`
-              : `In progress: first to ${needed} ${needed === 1 ? 'set' : 'sets'} wins. Saving keeps the match live.`}
+              ? tally.isDraw
+                ? 'Saving will finalize this match as a 1–1 draw. Both teams bank one set.'
+                : `Saving will finalize this match — ${leader} wins.${
+                    match.phase === 'bracket' ? ' The bracket advances automatically.' : ''
+                  }`
+              : fixedSets
+                ? `${tally.setsRemaining} more ${tally.setsRemaining === 1 ? 'set' : 'sets'} to play. Saving keeps the match live.`
+                : `In progress: first to ${needed} ${needed === 1 ? 'set' : 'sets'} wins. Saving keeps the match live.`}
       </p>
 
       <div className="sticky-actions">

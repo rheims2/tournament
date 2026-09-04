@@ -21,9 +21,11 @@ You need a free Supabase project (Postgres + auth) and about five minutes.
 
 **1. Create the project** at [supabase.com](https://supabase.com).
 
-**2. Run the migration.** Open the SQL editor and paste in the contents of
-[`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql). This
-creates every table, the role rules, and the auto-advancement logic.
+**2. Run the migrations.** Open the SQL editor and run each file in
+[`supabase/migrations/`](supabase/migrations/) in order — `0001_init.sql`
+first, then `0002_fixed_set_pools.sql`. The first creates every table, the role
+rules, and the auto-advancement logic; the second adds fixed-set pool play.
+Both are safe to re-run.
 
 **3. Point the app at it.**
 
@@ -139,6 +141,39 @@ live rather than finalizing it, and the app refuses to finalize a match where a
 set before the clinching one was left unfinished. This is enforced in the
 database too, so it holds no matter what posts the score.
 
+### Pool play: best-of, or a fixed number of sets
+
+Pool matches can run either way, chosen per division in **Admin → Pool play**.
+
+**Best of N** is the default: the match stops the moment one team takes the
+majority of sets, and there is always a winner.
+
+**Fixed sets** plays every set out. Nobody stops at 2–0 in a three-set match,
+and a two-set match can finish **1–1** with no winner at all. Sets per match
+follow the size of the pool, because a smaller pool plays fewer matches:
+
+| Pool size | Matches per team | Sets per match | Sets per team |
+|---|---|---|---|
+| 3 teams | 2 | 3 | 6 |
+| 4 teams | 3 | 2 | 6 |
+
+Both give every team the same six sets, so pools of different sizes finish at
+roughly the same time. The mapping is editable per division for pools of 3–6.
+
+Fixed-set pools also take their own **target** and an optional **head start** —
+set both teams to begin at 4 and play to 25, and the score sheet opens
+pre-filled at 4–4. Every set is played to the same number; there is no
+shortened deciding set, because no set is deciding.
+
+Because a fixed-set match can draw, these pools are ranked differently: on
+**total sets won**, then **point differential**, then head-to-head for a pair
+still level on both, then team name. Match wins are not the unit of progress
+when a match can end level, so what a team banks is sets. The standings table
+switches to lead with sets, and shows a W–L–D column once any match has drawn.
+
+Bracket play always stays a best-of — a draw there would have nothing to
+resolve it.
+
 ---
 
 ## Development
@@ -191,7 +226,7 @@ mechanism handles all three bracket formats.
 
 ## Tiebreakers
 
-Within a pool, in order:
+Within a **best-of** pool, in order:
 
 1. Match win percentage
 2. Head-to-head — applied when exactly two teams are tied
@@ -199,6 +234,13 @@ Within a pool, in order:
 4. Point ratio
 5. Point differential
 6. Team name, so the order is at least stable and reproducible
+
+Within a **fixed-set** pool:
+
+1. Total sets won
+2. Point differential
+3. Head-to-head — applied when exactly two teams are tied
+4. Team name
 
 Across pools, when seeding the bracket, head-to-head is skipped: the teams
 never played each other.

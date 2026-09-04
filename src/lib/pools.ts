@@ -32,6 +32,36 @@ export function splitIntoPools<T>(teams: T[], maxPerPool = 4): T[][] {
   return pools
 }
 
+export const DEFAULT_SETS_BY_POOL_SIZE: Record<string, number> = {
+  '2': 3,
+  '3': 3,
+  '4': 2,
+  '5': 2,
+  '6': 2,
+}
+
+/**
+ * How many sets a match in this pool plays. Smaller pools play more sets per
+ * match because they play fewer matches, which keeps every team's time on
+ * court roughly even.
+ */
+export function setsForPoolSize(
+  poolSize: number,
+  map: Record<string, number> = DEFAULT_SETS_BY_POOL_SIZE,
+): number {
+  const exact = map[String(poolSize)]
+  if (exact) return exact
+  // Unlisted size: fall back to the largest listed size at or below it, then
+  // to the smallest listed entry.
+  const sizes = Object.keys(map)
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b)
+  if (sizes.length === 0) return 2
+  const below = sizes.filter((n) => n <= poolSize)
+  return map[String(below.length ? below[below.length - 1] : sizes[0])]
+}
+
 export interface Pairing {
   round: number
   home: string
@@ -81,6 +111,8 @@ export interface PlannedPoolMatch {
   homeTeamId: string
   awayTeamId: string
   bestOf: number
+  /** Non-null when every set is played out rather than stopping at a clincher. */
+  setsToPlay: number | null
 }
 
 const newId = () =>
@@ -88,11 +120,17 @@ const newId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now().toString(36)
 
-/** Full round-robin schedule for one pool. */
+/**
+ * Full round-robin schedule for one pool.
+ *
+ * @param setsToPlay when given, every match plays exactly this many sets
+ *        instead of running as a best-of.
+ */
 export function planPoolMatches(
   pool: { id: string; name: string },
   teams: Team[],
   bestOf: number,
+  setsToPlay: number | null = null,
 ): PlannedPoolMatch[] {
   const pairings = roundRobinPairings(teams.map((t) => t.id))
   return pairings.map((pairing, index) => ({
@@ -103,7 +141,9 @@ export function planPoolMatches(
     label: `Pool ${pool.name} Game ${index + 1}`,
     homeTeamId: pairing.home,
     awayTeamId: pairing.away,
-    bestOf,
+    // best_of doubles as the upper bound on sets for a fixed-set match.
+    bestOf: setsToPlay ?? bestOf,
+    setsToPlay,
   }))
 }
 

@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_SETS_BY_POOL_SIZE,
+  planPoolMatches,
   poolCountFor,
   poolName,
   roundRobinPairings,
   scheduleMatches,
+  setsForPoolSize,
   splitIntoPools,
 } from '../pools'
+import type { Team } from '../types'
 
 describe('pool division', () => {
   it('never puts more than the max in a pool', () => {
@@ -127,5 +131,60 @@ describe('scheduling', () => {
         minutesPerSlot: 30,
       }),
     ).toEqual([])
+  })
+})
+
+describe('sets per pool size', () => {
+  it('gives a 4-team pool 2 sets and a 3-team pool 3', () => {
+    expect(setsForPoolSize(4)).toBe(2)
+    expect(setsForPoolSize(3)).toBe(3)
+  })
+
+  it('honours a custom map', () => {
+    expect(setsForPoolSize(4, { '3': 3, '4': 1 })).toBe(1)
+  })
+
+  it('falls back to the nearest smaller size for an unlisted pool', () => {
+    // 8 is not listed, so it takes the rule for the largest listed size (6).
+    expect(setsForPoolSize(8, DEFAULT_SETS_BY_POOL_SIZE)).toBe(2)
+    // 1 is below everything listed, so it takes the smallest entry.
+    expect(setsForPoolSize(1, { '3': 3, '4': 2 })).toBe(3)
+  })
+
+  it('keeps total sets per team comparable across pool sizes', () => {
+    // A 4-team pool: 3 matches each x 2 sets = 6. A 3-team pool: 2 x 3 = 6.
+    const four = (4 - 1) * setsForPoolSize(4)
+    const three = (3 - 1) * setsForPoolSize(3)
+    expect(four).toBe(6)
+    expect(three).toBe(6)
+  })
+})
+
+describe('planning fixed-set pool matches', () => {
+  const teams = (n: number): Team[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      division_id: 'd',
+      pool_id: 'p',
+      name: `T${i}`,
+      club: null,
+      bracket_seed: null,
+      created_at: '',
+    }))
+
+  it('stamps the fixed set count on every match in the pool', () => {
+    const planned = planPoolMatches({ id: 'p', name: 'A' }, teams(4), 3, 2)
+    expect(planned.length).toBe(6)
+    for (const m of planned) {
+      expect(m.setsToPlay).toBe(2)
+      // best_of doubles as the ceiling on sets, so it must match.
+      expect(m.bestOf).toBe(2)
+    }
+  })
+
+  it('leaves best-of matches unmarked', () => {
+    const planned = planPoolMatches({ id: 'p', name: 'A' }, teams(3), 3)
+    expect(planned.every((m) => m.setsToPlay === null)).toBe(true)
+    expect(planned.every((m) => m.bestOf === 3)).toBe(true)
   })
 })

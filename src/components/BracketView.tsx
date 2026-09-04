@@ -1,10 +1,9 @@
 import { BRACKET_LABEL, BRACKET_ORDER } from '../lib/bracket'
-import type { BracketGroup, Division, Match, MatchSet, Team } from '../lib/types'
+import type { BracketGroup, Match, MatchSet, Team } from '../lib/types'
 import { MatchCard } from './MatchCard'
 import { Empty } from './ui'
 
 interface Props {
-  division: Division
   matches: Match[]
   teamsById: Map<string, Team>
   setsByMatch: Map<string, MatchSet[]>
@@ -29,7 +28,7 @@ const roundHeading = (matches: Match[], round: number): string => {
   return label.replace(/\s\d+$/, '')
 }
 
-export function BracketView({ division, matches, teamsById, setsByMatch, onSelect }: Props) {
+export function BracketView({ matches, teamsById, setsByMatch, onSelect }: Props) {
   if (matches.length === 0) {
     return (
       <Empty>
@@ -80,7 +79,6 @@ export function BracketView({ division, matches, teamsById, setsByMatch, onSelec
                       match={match}
                       sets={setsByMatch.get(match.id) ?? []}
                       teamsById={teamsById}
-                      division={division}
                       onSelect={onSelect}
                       showLabel={false}
                     />

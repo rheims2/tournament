@@ -42,7 +42,10 @@ PSQL=(psql -h "$WORK" -p "$PORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -q)
 
 echo "==> applying stub + migration"
 "${PSQL[@]}" -f supabase/tests/00_stub.sql
-"${PSQL[@]}" -f supabase/migrations/0001_init.sql 2>&1 | grep -v 'does not exist, skipping' || true
+for m in supabase/migrations/*.sql; do
+  echo "    $m"
+  "${PSQL[@]}" -f "$m" 2>&1 | grep -v 'does not exist, skipping' || true
+done
 
 echo "==> seeding users and divisions"
 "${PSQL[@]}" -f supabase/tests/01_setup.sql > "$WORK/out.txt"
@@ -57,6 +60,7 @@ echo "==> playing every match through submit_match_score()"
 "${PSQL[@]}" -f supabase/tests/03_play.sql >> "$WORK/out.txt" 2>&1
 "${PSQL[@]}" -f supabase/tests/04_corrections_and_roles.sql >> "$WORK/out.txt" 2>&1
 "${PSQL[@]}" -f supabase/tests/05_set_rules.sql >> "$WORK/out.txt" 2>&1
+"${PSQL[@]}" -f supabase/tests/06_fixed_sets.sql >> "$WORK/out.txt" 2>&1
 
 echo
 grep -Eo 'TEST [^|]*(PASS|FAIL[^|]*)' "$WORK/out.txt" | sed 's/^/  /'
@@ -70,7 +74,7 @@ fi
 
 # Every assertion must actually appear. Without this a suppressed NOTICE or a
 # skipped file would look like a clean run. Bump when adding assertions.
-EXPECTED=28
+EXPECTED=37
 COUNT=$(grep -c 'TEST .*PASS' "$WORK/out.txt")
 if [ "$COUNT" -ne "$EXPECTED" ]; then
   echo "DATABASE TESTS INCOMPLETE: expected $EXPECTED assertions, saw $COUNT" >&2

@@ -1,4 +1,4 @@
-import type { Match, MatchSet, Team } from './types'
+import type { Match, MatchSet, PoolScoringMode, Team } from './types'
 
 export interface TeamRecord {
   teamId: string
@@ -6,6 +6,8 @@ export interface TeamRecord {
   played: number
   matchWins: number
   matchLosses: number
+  /** Fixed-set pool matches can finish level. Always 0 in a best-of. */
+  matchTies: number
   setWins: number
   setLosses: number
   pointsFor: number
@@ -28,6 +30,7 @@ const emptyRecord = (team: Team): TeamRecord => ({
   played: 0,
   matchWins: 0,
   matchLosses: 0,
+  matchTies: 0,
   setWins: 0,
   setLosses: 0,
   pointsFor: 0,
@@ -62,6 +65,10 @@ export function buildRecords(
     } else if (match.winner_team_id === away.teamId) {
       away.matchWins += 1
       home.matchLosses += 1
+    } else {
+      // A fixed-set match that finished level has no winner.
+      home.matchTies += 1
+      away.matchTies += 1
     }
 
     for (const set of setsByMatch.get(match.id) ?? []) {
@@ -139,10 +146,29 @@ function compareRatios(a: TeamRecord, b: TeamRecord): number {
 }
 
 /**
+ * Fixed-set pools are ranked on sets won, then point differential. Match
+ * wins are not the unit of progress when every match plays its sets out and
+ * can finish level, so total sets banked is what separates teams.
+ */
+export function compareFixedSets(a: TeamRecord, b: TeamRecord): number {
+  return (
+    byNumberDesc(a.setWins, b.setWins) ||
+    byNumberDesc(pointDiff(a), pointDiff(b))
+  )
+}
+
+/**
  * Overall comparison used to seed teams across pools, where head-to-head is
  * meaningless because the teams never played each other.
  */
-export function compareOverall(a: TeamRecord, b: TeamRecord): number {
+export function compareOverall(
+  a: TeamRecord,
+  b: TeamRecord,
+  mode: PoolScoringMode = 'best_of',
+): number {
+  if (mode === 'fixed_sets') {
+    return compareFixedSets(a, b) || a.teamName.localeCompare(b.teamName)
+  }
   return (
     byNumberDesc(winPct(a), winPct(b)) ||
     compareRatios(a, b) ||
@@ -173,8 +199,31 @@ export function rankPool(
   teams: Team[],
   matches: Match[],
   setsByMatch: Map<string, MatchSet[]>,
+  mode: PoolScoringMode = 'best_of',
 ): TeamRecord[] {
   const records = [...buildRecords(teams, matches, setsByMatch).values()]
+
+  if (mode === 'fixed_sets') {
+    // Sets won, then point differential, then head-to-head for a pair still
+    // level on both, and finally the name so the order is reproducible.
+    const ordered = [...records].sort(compareFixedSets)
+    const resolvedFixed: TeamRecord[] = []
+    for (const tied of groupBy(ordered, (a, b) => compareFixedSets(a, b) === 0)) {
+      if (tied.length === 2) {
+        const h2h = headToHead(tied[0].teamId, tied[1].teamId, matches, setsByMatch)
+        if (h2h !== 0) {
+          resolvedFixed.push(...(h2h < 0 ? tied : [tied[1], tied[0]]))
+          continue
+        }
+      }
+      resolvedFixed.push(...[...tied].sort((a, b) => a.teamName.localeCompare(b.teamName)))
+    }
+    resolvedFixed.forEach((record, index) => {
+      record.rank = index + 1
+    })
+    return resolvedFixed
+  }
+
   records.sort((a, b) => byNumberDesc(winPct(a), winPct(b)))
 
   const resolved: TeamRecord[] = []

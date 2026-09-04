@@ -19,8 +19,15 @@ import {
   updateDivision,
   updateTournament,
 } from '../lib/api'
-import { poolCountFor } from '../lib/pools'
-import { FORMAT_LABEL, ROLE_LABEL, type AppRole, type BracketFormat } from '../lib/types'
+import { DEFAULT_SETS_BY_POOL_SIZE, poolCountFor, setsForPoolSize, splitIntoPools } from '../lib/pools'
+import {
+  FORMAT_LABEL,
+  POOL_MODE_LABEL,
+  ROLE_LABEL,
+  type AppRole,
+  type BracketFormat,
+  type PoolScoringMode,
+} from '../lib/types'
 import { Banner, Card, Confirm, Empty, Field, Spinner, formatDate } from '../components/ui'
 import { LoginPage } from './LoginPage'
 
@@ -362,6 +369,21 @@ function DivisionAdmin({ divisionId, busy, run }: { divisionId: string; busy: bo
   const projectedPools = poolCountFor(teamCount, maxPerPool)
   const courtList = courts.split(',').map((c) => c.trim()).filter(Boolean)
 
+  // Show exactly what "build pools" would produce with the current settings.
+  const plannedPoolSummary = (() => {
+    const groups = splitIntoPools(data.teams, maxPerPool)
+    if (groups.length === 0) return ''
+    const counts = new Map<string, number>()
+    for (const group of groups) {
+      const sets = setsForPoolSize(group.length, division.pool_sets_by_size)
+      const key = `${group.length}-team → ${sets} ${sets === 1 ? 'set' : 'sets'}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([key, n]) => `${n} × ${key} per match`)
+      .join(' · ')
+  })()
+
   /** Combine today's date with the chosen wall-clock start time. */
   const startAt = () => {
     const base = division && tournament?.tourney_date ? tournament.tourney_date : null
@@ -473,6 +495,119 @@ function DivisionAdmin({ divisionId, busy, run }: { divisionId: string; busy: bo
               ))}
             </select>
           </Field>
+
+          <Field
+            label="How pool matches are scored"
+            hint={
+              division.pool_scoring_mode === 'fixed_sets'
+                ? 'Every set is played, so a two-set match can finish 1–1. Standings rank on total sets won, then point differential.'
+                : 'A match stops as soon as one team takes the majority of sets.'
+            }
+          >
+            <select
+              value={division.pool_scoring_mode}
+              disabled={busy}
+              onChange={(e) =>
+                run('Pool scoring updated.', () =>
+                  updateDivision(division.id, {
+                    pool_scoring_mode: e.target.value as PoolScoringMode,
+                  }),
+                )
+              }
+            >
+              {(['best_of', 'fixed_sets'] as PoolScoringMode[]).map((m) => (
+                <option key={m} value={m}>
+                  {POOL_MODE_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {division.pool_scoring_mode === 'fixed_sets' ? (
+            <>
+              <div className="row wrap">
+                <div className="grow">
+                  <label>Play to</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={99}
+                    defaultValue={division.pool_points_to_win}
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value)
+                      if (v === division.pool_points_to_win || v < 5 || v > 99) return
+                      void run('Pool target updated.', () =>
+                        updateDivision(division.id, { pool_points_to_win: v }),
+                      )
+                    }}
+                  />
+                </div>
+                <div className="grow">
+                  <label>Both teams start at</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={24}
+                    defaultValue={division.pool_start_score}
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value)
+                      if (v === division.pool_start_score || v < 0 || v > 24) return
+                      void run('Pool start score updated.', () =>
+                        updateDivision(division.id, { pool_start_score: v }),
+                      )
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="tiny muted" style={{ marginTop: 4 }}>
+                Sets run {division.pool_start_score}–{division.pool_start_score} to{' '}
+                {division.pool_points_to_win}, win by {division.win_by}. The score sheet pre-fills
+                the start.
+              </p>
+
+              <label style={{ marginTop: 12 }}>Sets per match, by pool size</label>
+              <div className="row wrap">
+                {[3, 4, 5, 6].map((size) => {
+                  const current =
+                    division.pool_sets_by_size?.[String(size)] ??
+                    DEFAULT_SETS_BY_POOL_SIZE[String(size)]
+                  return (
+                    <div key={size} style={{ flex: '1 1 68px' }}>
+                      <label className="tiny">{size} teams</label>
+                      <select
+                        value={current}
+                        disabled={busy}
+                        onChange={(e) =>
+                          run('Sets per pool size updated.', () =>
+                            updateDivision(division.id, {
+                              pool_sets_by_size: {
+                                ...DEFAULT_SETS_BY_POOL_SIZE,
+                                ...division.pool_sets_by_size,
+                                [String(size)]: Number(e.target.value),
+                              },
+                            }),
+                          )
+                        }
+                      >
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="tiny muted" style={{ marginTop: 6 }}>
+                {teamCount >= 2
+                  ? plannedPoolSummary
+                  : 'A smaller pool plays more sets per match, because it plays fewer matches.'}
+              </p>
+            </>
+          ) : null}
           <button
             className="primary"
             style={{ width: '100%' }}

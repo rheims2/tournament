@@ -1,4 +1,4 @@
-import type { BracketFormat, BracketGroup, FeedOutcome } from './types'
+import type { BracketFormat, BracketGroup, FeedOutcome, PoolScoringMode } from './types'
 import type { TeamRecord } from './standings'
 import { compareOverall } from './standings'
 
@@ -73,7 +73,10 @@ export function seedOrder(size: number): number[] {
  * and within a finishing position teams are ordered by their overall record.
  * This is what turns the morning's pool play into the afternoon's bracket.
  */
-export function seedFromPools(pools: PoolResult[]): SeededTeam[] {
+export function seedFromPools(
+  pools: PoolResult[],
+  mode: PoolScoringMode = 'best_of',
+): SeededTeam[] {
   const deepest = Math.max(0, ...pools.map((p) => p.standings.length))
   const seeded: SeededTeam[] = []
 
@@ -81,7 +84,7 @@ export function seedFromPools(pools: PoolResult[]): SeededTeam[] {
     const atThisPlace = pools
       .filter((pool) => pool.standings[place])
       .map((pool) => ({ pool, record: pool.standings[place] }))
-      .sort((a, b) => compareOverall(a.record, b.record))
+      .sort((a, b) => compareOverall(a.record, b.record, mode))
 
     for (const { pool, record } of atThisPlace) {
       seeded.push({
