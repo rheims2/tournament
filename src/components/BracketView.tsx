@@ -1,6 +1,7 @@
 import { BRACKET_LABEL, BRACKET_ORDER } from '../lib/bracket'
 import type { BracketGroup, Match, MatchSet, Team } from '../lib/types'
 import { MatchCard } from './MatchCard'
+import { TrophyIcon } from './icons'
 import { Empty } from './ui'
 
 interface Props {
@@ -56,8 +57,9 @@ export function BracketView({ matches, teamsById, setsByMatch, onSelect }: Props
     <>
       {champion ? (
         <div className="card center">
+          <TrophyIcon className="champion-mark" />
           <div className="tiny muted" style={{ letterSpacing: '0.08em' }}>
-            🏆 CHAMPION
+            CHAMPION
           </div>
           <div style={{ fontSize: 20, fontWeight: 750, marginTop: 4 }}>{champion}</div>
         </div>

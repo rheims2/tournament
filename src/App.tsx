@@ -5,6 +5,7 @@ import { useTournamentContext } from './lib/tournamentContext'
 import { isConfigured } from './lib/supabase'
 import { ROLE_LABEL } from './lib/types'
 import { Spinner, formatDate } from './components/ui'
+import { BallIcon, GroupsIcon, PersonIcon, SlidersIcon } from './components/icons'
 import { SetupPage } from './pages/SetupPage'
 import { LoginPage } from './pages/LoginPage'
 import { GamesPage } from './pages/GamesPage'
@@ -19,21 +20,21 @@ function BottomNav({ showAdmin }: { showAdmin: boolean }) {
   return (
     <nav className="bottom-nav">
       <NavLink to="/games">
-        <span className="glyph" aria-hidden>🏐</span>
+        <BallIcon className="glyph" />
         Games
       </NavLink>
       <NavLink to="/divisions">
-        <span className="glyph" aria-hidden>📋</span>
+        <GroupsIcon className="glyph" />
         Divisions
       </NavLink>
       {showAdmin ? (
         <NavLink to="/admin">
-          <span className="glyph" aria-hidden>⚙️</span>
+          <SlidersIcon className="glyph" />
           Admin
         </NavLink>
       ) : null}
       <NavLink to="/account">
-        <span className="glyph" aria-hidden>👤</span>
+        <PersonIcon className="glyph" />
         Account
       </NavLink>
     </nav>
