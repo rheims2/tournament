@@ -110,6 +110,15 @@ behind.
 Roles are assigned in **Admin → People & roles**. The last admin cannot demote
 themselves, so you can't lock yourself out.
 
+**Forgotten password?** Use *Forgot password* on the sign-in form; the emailed
+link opens a page to set a new one. For this to work, add your site's URL to
+**Authentication → URL Configuration → Redirect URLs** in Supabase (including
+`https://your-site/reset`), or the link will bounce.
+
+An admin can also reset anyone's password directly from the Supabase dashboard
+under **Authentication → Users**, which is the quickest fix on tournament
+morning.
+
 Enforcement is in the database, not the interface. Reads are public; direct
 writes to tables are admin-only under row level security; and score entry goes
 through a `security definer` function that checks the caller's role. A

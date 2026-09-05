@@ -26,6 +26,15 @@ export function friendlyError(error: unknown): string {
   if (message.includes('permission') || message.includes('42501') || message.includes('row-level security')) {
     return 'You do not have permission to do that. Ask an admin to change your role.'
   }
+  if (message.toLowerCase().includes('email not confirmed')) {
+    return 'This account has not confirmed its email yet. Check your inbox, or ask an admin to confirm it in Supabase.'
+  }
+  if (message.toLowerCase().includes('invalid login credentials')) {
+    return 'That email and password do not match an account. If you are sure of the email, use "Forgot password".'
+  }
+  if (message.toLowerCase().includes('rate limit') || message.includes('429')) {
+    return 'Too many attempts just now. Wait a minute and try again.'
+  }
   if (message.includes('duplicate key') && message.includes('teams')) {
     return 'A team with that name already exists in this division.'
   }

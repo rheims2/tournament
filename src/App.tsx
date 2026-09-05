@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { useRealtimeSync } from './lib/hooks'
 import { useTournamentContext } from './lib/tournamentContext'
@@ -13,6 +13,7 @@ import { DivisionPage } from './pages/DivisionPage'
 import { AdminPage } from './pages/AdminPage'
 import { AccountPage } from './pages/AccountPage'
 import { TournamentsPage } from './pages/TournamentsPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 
 function BottomNav({ showAdmin }: { showAdmin: boolean }) {
   return (
@@ -65,11 +66,17 @@ function TopBar() {
 }
 
 export function App() {
-  const { loading } = useAuth()
+  const { loading, recovering } = useAuth()
+  const location = useLocation()
   useRealtimeSync()
 
   if (!isConfigured) return <SetupPage />
   if (loading) return <Spinner />
+
+  // Someone who followed a reset link is signed in only to set a new password.
+  if (recovering && location.pathname !== '/reset') {
+    return <Navigate to="/reset" replace />
+  }
 
   return (
     <div className="app">
@@ -84,6 +91,7 @@ export function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset" element={<ResetPasswordPage />} />
           <Route path="*" element={<Navigate to="/games" replace />} />
         </Routes>
       </main>

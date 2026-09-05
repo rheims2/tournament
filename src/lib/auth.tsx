@@ -10,10 +10,14 @@ interface AuthValue {
   loading: boolean
   canScore: boolean
   isAdmin: boolean
+  /** True after arriving from a password-reset link, until a new one is set. */
+  recovering: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, fullName: string) => Promise<void>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  sendPasswordReset: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -22,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recovering, setRecovering] = useState(false)
 
   async function loadProfile(userId: string | undefined) {
     if (!userId) {
@@ -47,8 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next)
+      // Arriving from a reset link signs you in with a short-lived recovery
+      // session; the app has to send you to set a new password rather than
+      // dropping you into the tournament as if nothing happened.
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true)
       // Defer: calling back into supabase from this callback can deadlock.
       setTimeout(() => void loadProfile(next?.user.id), 0)
     })
@@ -69,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       canScore: role === 'scorekeeper' || role === 'admin',
       isAdmin: role === 'admin',
+      recovering,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
@@ -84,12 +94,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         await supabase.auth.signOut()
         setProfile(null)
+        setRecovering(false)
+      },
+      async sendPasswordReset(email) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset`,
+        })
+        if (error) throw error
+      },
+      async updatePassword(password) {
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
+        setRecovering(false)
       },
       async refreshProfile() {
         await loadProfile(session?.user.id)
       },
     }
-  }, [session, profile, loading])
+  }, [session, profile, loading, recovering])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
