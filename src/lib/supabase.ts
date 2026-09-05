@@ -32,6 +32,12 @@ export function friendlyError(error: unknown): string {
   if (message.toLowerCase().includes('invalid login credentials')) {
     return 'That email and password do not match an account. If you are sure of the email, use "Forgot password".'
   }
+  // Supabase's built-in mailer allows only a couple of messages an hour, so an
+  // email limit is a much longer wait than a request limit -- and an admin can
+  // sidestep it entirely by setting the password from the dashboard.
+  if (message.toLowerCase().includes('email rate limit')) {
+    return 'The project has sent too many emails this hour. Wait an hour, or ask an admin to set your password directly in Supabase (Authentication → Users) — that needs no email.'
+  }
   if (message.toLowerCase().includes('rate limit') || message.includes('429')) {
     return 'Too many attempts just now. Wait a minute and try again.'
   }

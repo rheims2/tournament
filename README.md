@@ -55,6 +55,15 @@ For a real tournament, deploy the built site anywhere static
 > handing out scorekeeper accounts on the morning of the tournament much less
 > painful.
 
+> **Do not depend on email on the day.** Supabase's built-in mailer is capped at
+> a couple of messages an hour and is meant for testing, so confirmations and
+> password resets will start failing exactly when you need them. Either create
+> the accounts yourself in advance (Authentication → Users → *Add user*, set a
+> password, tick *Auto Confirm User*) and hand out the passwords, or configure
+> your own SMTP under *Project Settings → Authentication → SMTP Settings*.
+> An admin can always set someone's password from the dashboard with no email
+> involved.
+
 ---
 
 ## Running a tournament
