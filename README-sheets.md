@@ -1,68 +1,124 @@
-# Live HTML view of the tournament Google Sheets
+# Live HTML views of the tournament Google Sheets
 
-`public/sheets.html` is a single, self-contained page that shows read-only
-tables of Google Sheets you don't own. Hitting **Refresh** re-reads the current
-values straight from Google, so edits the tournament staff make during the day
-appear here — no copies, no export step, nothing to keep in sync.
+Two standalone pages read the tournament's Google Sheets and re-read them
+every time you hit **Refresh**, so edits the scorers make during the day show
+up without anyone exporting anything. Neither needs a build step, a server, an
+API key, or a Google login.
 
-It's one file with no build step and no dependencies. Open it by double-clicking
-it, or deploy it with this app and reach it at `/sheets.html`.
+| | |
+|---|---|
+| **`public/tournament.html`** | The designed view: divisions, pools with computed standings, brackets, court schedule, and a "follow my team" mode. Reads the sheets and works out what's in them. |
+| **`public/sheets.html`** | The plain view: each sheet as a scrollable table, exactly as it appears in Google. No interpretation, so nothing to misread. |
 
-## Setting up the six sheets
+Open either by double-clicking it, or deploy them with this app and reach them
+at `/tournament.html` and `/sheets.html`.
 
-Open the page and click **Sheets…**. Paste one line per sheet:
+## Pointing them at your sheets
+
+Both pages have a paste-in setup. In `tournament.html` it's the **Data** tab;
+in `sheets.html` it's the **Sheets…** button. One line per sheet:
 
 ```
-Pool Play  | https://docs.google.com/spreadsheets/d/1AbCdEf…/edit#gid=0
-Standings  | https://docs.google.com/spreadsheets/d/1GhIjKl…/edit#gid=0
+Varsity Girls  | division | https://docs.google.com/spreadsheets/d/1AbCdEf…/edit#gid=0
+JV Girls       | division | https://docs.google.com/spreadsheets/d/1GhIjKl…/edit#gid=0
+Court Schedule | schedule | https://docs.google.com/spreadsheets/d/1MnOpQr…/edit#gid=0
 ```
 
-The name is the tab label; the link is whatever Google's address bar shows. The
-list is saved in your browser, so it survives reloads and is easy to fix
-mid-tournament.
+The list is saved in your browser, so it survives reloads and is easy to fix
+mid-tournament. To put the same list in front of everyone, fill in the `SHEETS`
+array near the top of the file and redeploy; a locally saved list overrides it,
+and **Use built-in list** discards the local copy.
 
-To put the same list in front of everyone, fill in the `SHEETS` array near the
-top of `sheets.html` and redeploy. A locally saved list overrides the built-in
-one; **Use built-in list** discards the local copy.
+`tournament.html` also has an `EVENT` block above `SHEETS`: the name shown in
+the top bar, and `dayDates`, which maps a day label in your sheets
+(`"Friday"`) to a real date (`"2026-08-28"`). Filling that in is what switches
+on **On the courts now** and **Up next** — without it everything else still
+works, just with no live clock.
 
 ### Sheets with more than one tab
 
-The page reads one tab at a time — Google's endpoint has no way to list the
-others. Add one line per tab, opening each tab in Google Sheets first and
-copying the `#gid=…` that appears in the URL:
-
-```
-Brackets — Gold   | https://docs.google.com/spreadsheets/d/1MnOpQr…/edit#gid=0
-Brackets — Silver | https://docs.google.com/spreadsheets/d/1MnOpQr…/edit#gid=884213
-```
+The pages read one tab at a time; Google's endpoint has no way to list the
+others. Add one line per tab, opening each in Google Sheets first and copying
+the `#gid=…` that appears in the URL.
 
 ## What each sheet has to be
 
 **A real Google Sheet.** Open it: a URL starting with
 `docs.google.com/spreadsheets/d/` is a Google Sheet and will work. A file that
-opens in a Drive preview with a Download button is an uploaded `.xlsx` and has
-no live data endpoint — see below.
+opens in a Drive preview with a Download button is an uploaded `.xlsx`, which
+has no live data endpoint — see below.
 
-**Shared "Anyone with the link — Viewer".** Test it in a private window: if
-Google asks you to sign in, the page can't read it either, and only the owner
-can widen the sharing. "Anyone in <company> with the link" is *not* enough — the
-page reads anonymously.
+**Shared "Anyone with the link — Viewer."** Test in a private window: if Google
+asks you to sign in, the pages can't read it either, and only the owner can
+widen the sharing. "Anyone in *company* with the link" is not enough, because
+the pages read anonymously. The owner does **not** need File → Publish to web,
+and you need nothing beyond the view link.
 
-The owner does **not** need to use File → Share → Publish to web, and you don't
-need any access beyond the view link you already have.
+## The layout `tournament.html` expects
+
+It reads the shape these workbooks are normally laid out in: stacked blocks,
+each one a **heading row** with a single filled cell, a **header row** naming
+the columns, then the rows, and a blank row before the next block.
+
+```
+Pool A                                              <- heading (one cell filled)
+Day      Time      Court  Team A       Team B     Result      <- header row
+Friday   3:00 PM   3      Manhattan    KC East    CHIEF 25-16, CHIEF 25-16
+Friday   4:30 PM   3      Omaha RR 1   Manhattan  Roadrunners 1 25-15, 25-6
+                                                    <- blank row ends the block
+Winners Round 1
+Game #   Day       Time   Court  Team A      Team B   Result
+1        Saturday  9:05   3      Omaha RR 1  KC Fire  Roadrunners 1 25-2, 25-7
+5        Saturday  11:15  3      W1          W2
+```
+
+Column headers are matched by name, not position, so the order doesn't matter
+and unrecognised columns are ignored. It understands `Team A`/`Team B`,
+`Home`/`Away`, or a single `Match` column reading `A vs B`; `Result` or a pair
+of score columns; and optional `Game #`, `Day`, `Court`, `Pool`, `Round`,
+`Winner` and `Place` columns.
+
+- A block headed `Pool A` (or with a `Pool` column) becomes a pool.
+- A block headed like a round — `Winners Round 1`, `Semifinals`,
+  `Championship` — becomes a bracket column. Consecutive ones line up as one
+  bracket; a heading containing the word *bracket* (`5th place bracket`)
+  starts a separate one.
+- `W1`, `L3`, `Winner of 5`, `TBD` and `Bye` in a team cell are read as *where
+  that slot comes from*, and shown as a dashed source chip until it's filled.
+- A block with a `Place` column becomes the division's final standings.
+
+**Who won is worked out from the result text.** Each comma-separated piece is
+one set and names the side that took it, so `Cougars 25-19, 23-25, 15-11`
+counts as a Cougars win and `Warriors 25-20, Cougars 25-23` counts as a split.
+An explicit `Winner` column is trusted ahead of that. Where the naming is
+ambiguous no winner is claimed, rather than guessing one.
+
+Pool standings (W–L, sets, point differential) are **computed from the results
+recorded so far**, not read from the sheet, so they move as scores go in.
+
+A sheet with role `schedule` is read as the master court grid instead: times
+across the top row, courts down the first column, and a heading row starting
+each day.
+
+### If it reads a sheet wrong
+
+Open the **Data** tab. It shows every sheet exactly as Google returned it,
+what was made of it, and how many blocks weren't recognised. Compare that
+against the sheet and the mismatch is usually obvious. All the layout logic
+lives in one marked section of `tournament.html` (*"2. making sense of a
+grid"*) — retargeting it to a differently shaped workbook means changing that
+section and nothing else.
 
 ## If a sheet is an uploaded .xlsx
 
-There is no way to read one live from a browser: Drive's download URL sends no
-CORS headers, so a plain HTML page is blocked from fetching it. Two options:
+There's no way to read one live from a browser: Drive's download URL sends no
+CORS headers, so a static page is blocked from fetching it. Either ask the
+owner to open it and choose **File → Save as Google Sheets** (a one-time
+conversion, after which the link works here), or run a server-side proxy that
+downloads the file and re-serves it with CORS headers — a real backend, worth
+it only if the owner won't convert.
 
-- Ask the owner to open it in Sheets and choose **File → Save as Google Sheets**.
-  That converts it once and the link then works here.
-- Or run a small server-side proxy that downloads the file and re-serves it with
-  CORS headers. That's a real backend, not a static file — worth it only if the
-  owner won't convert.
-
-## How it works
+## How the live read works
 
 Google's visualization endpoint returns a tab's contents as JSON:
 
@@ -70,25 +126,27 @@ Google's visualization endpoint returns a tab's contents as JSON:
 https://docs.google.com/spreadsheets/d/<FILE_ID>/gviz/tq?tqx=out:json&gid=<TAB_ID>
 ```
 
-The page loads it with a `<script>` tag (JSONP) rather than `fetch()`. That
+Both pages load it with a `<script>` tag (JSONP) rather than `fetch()`. That
 matters: none of the Sheets export URLs send CORS headers, so `fetch()` against
-them fails from any page that isn't on `docs.google.com`. JSONP isn't subject to
-CORS, which is what lets a static file do this with no server, no API key, and
-no Google login. Each request carries a timestamp so a refresh can't be answered
-from the browser cache.
+them fails from any page not on `docs.google.com`. JSONP isn't subject to CORS,
+which is what lets a static file do this at all. Each request carries a
+timestamp so a refresh can't be answered from the browser cache.
 
-## What it doesn't carry over
+## What doesn't come across
 
-Only values and Google's own number/date formatting come across. Cell colours,
-fonts, merged cells, conditional formatting, charts, and images are not in the
-data the endpoint returns. Each row's **Open in Google Sheets** link goes to the
-real thing when the formatting matters.
+Only values and Google's own number and date formatting. Cell colours, fonts,
+merged cells, conditional formatting, charts and images aren't in the data the
+endpoint returns. Every sheet has an **Open in Google Sheets** link for when
+the formatting is the point.
 
-## Notes for running it during a tournament
+## Running it during a tournament
 
-- **Auto** re-reads every 30 seconds to 5 minutes; returning to a phone that
-  slept triggers a refresh too, so nobody reads stale scores.
-- **Filter rows…** narrows the current table to matching rows — quickest way to
-  find one team or court.
-- A red dot on a tab means that sheet failed; open it to see why.
-- The header row and first column stay pinned while you scroll a wide bracket.
+- **Auto** re-reads every 30 seconds to 5 minutes; coming back to a phone that
+  slept refreshes too, so nobody reads stale scores.
+- **Follow a team** — in the top bar, or by tapping any team name anywhere —
+  highlights that team through every pool, bracket and court, and fills the
+  **My Team** tab with their games in order.
+- A game counts as *on now* from its start until the next game begins on that
+  court, capped at `EVENT.slotMinutes` (60 by default).
+- A red dot on a tab means that sheet failed to load; the Data tab says why.
+- **Print** drops the navigation and prints the current tab.
