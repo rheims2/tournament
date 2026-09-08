@@ -321,12 +321,22 @@ const EVENT = {
 }
 
 const SHEETS = [
-  // { name: 'Varsity Girls', role: 'division', url: 'https://docs.google.com/spreadsheets/d/…/edit#gid=0' },
+  // One entry per TAB. Tabs sharing a name become one division, which is how
+  // a workbook that keeps pool play and the bracket on separate tabs lands as
+  // a single page:
+  //
+  // { name: 'Varsity Girls', role: 'pool',    url: 'https://docs.google.com/spreadsheets/d/1AbC…/edit#gid=0' },
+  // { name: 'Varsity Girls', role: 'bracket', url: 'https://docs.google.com/spreadsheets/d/1AbC…/edit#gid=884213' },
   // { name: 'Court Schedule', role: 'schedule', url: '…' },
   //
-  // role: 'division' (pools + bracket + standings -- the default)
-  //       'schedule' (the master court grid: times across, courts down)
-  //       'raw'      (no parsing, just show the sheet as a table)
+  // Same file id, different gid -- open each tab in Google Sheets and copy the
+  // URL, the #gid=… on the end is that tab.
+  //
+  // role: 'pool'     this tab is pool play
+  //       'bracket'  this tab is the bracket
+  //       'division' one tab holding both, sorted out by its headings (default)
+  //       'schedule' the master court grid: times across, courts down
+  //       'raw'      no parsing, just show the sheet as a table
 ]
 </script>
 
@@ -370,7 +380,7 @@ function parseLines(text) {
     if (!link) return null
     const middle = parts.slice(0, -1)
     let role = 'division'
-    const roleIdx = middle.findIndex(p => /^(division|schedule|raw)$/i.test(p))
+    const roleIdx = middle.findIndex(p => /^(division|pool|bracket|schedule|raw)$/i.test(p))
     if (roleIdx >= 0) { role = middle[roleIdx].toLowerCase(); middle.splice(roleIdx, 1) }
     return { name: middle.join(' | ') || '', role, id: link.id, gid: link.gid,
              url: sheetUrl(link.id, link.gid) }
@@ -643,17 +653,31 @@ function classify(block) {
 
 /* ------------------------- a whole division sheet ----------------------- */
 
-function parseDivision(sheet, grid) {
+/**
+ * One tab, read into the parts a division is made of.
+ *
+ * `force` is 'pool' or 'bracket' when the tab is declared to be one of those,
+ * and then its match blocks are taken at their word. That matters for a
+ * workbook that splits pool play and the bracket across two tabs: a bracket
+ * tab often has no "Semifinals" heading to give itself away, just a table of
+ * games, and guessing from headings alone would file it as pool play.
+ * Standings and roster blocks are still recognised on their own merits.
+ */
+function parseSheet(grid, force) {
   const blocks = toBlocks(grid)
+  // The first heading in a tab is the tab's own title ("Varsity Girls —
+  // Bracket"); it names the sheet, not a sub-bracket inside it.
+  const sheetTitle = norm(blocks[0]?.title || '')
   const pools = [], groups = [], roster = []
   let places = null, placesNote = ''
   const unread = []
 
   for (const block of blocks) {
-    const kind = classify(block)
+    let kind = classify(block)
     const ms = block.map
       ? block.rows.map(r => rowToMatch(r, block.map)).filter(Boolean)
       : []
+    if (force && ms.length && (kind === 'pool' || kind === 'bracket')) kind = force
 
     if (kind === 'pool' && ms.length) {
       // A Pool column splits one block into several pools; otherwise the
@@ -672,7 +696,9 @@ function parseDivision(sheet, grid) {
       // A title that names a bracket outright ("5th place bracket") opens a
       // separate one; every other bracket block is another round of the one
       // already open, so the rounds line up as columns the way a bracket reads.
-      const named = /\bbracket\b/i.test(block.title || '')
+      const title = block.title || ''
+      const ownTitle = norm(title) === sheetTitle      // the tab's name, not a round's
+      const named = /\bbracket\b/i.test(title) && !ownTitle
       const rounds = []
       const push = (name, list) => list.length && rounds.push({ name, ms: list })
       const groupBy = (keyOf, label) => {
@@ -686,12 +712,12 @@ function parseDivision(sheet, grid) {
         for (const [k, v] of by) push(label(k, ++i), v)
       }
       if (ms.some(m => m.round)) groupBy(m => m.round || 'Round', k => k)
-      else if (!named && RE_BRACKET.test(block.title || '')) push(block.title, ms)
+      else if (!named && !ownTitle && RE_BRACKET.test(title)) push(title, ms)
       else if (ms.some(m => m.t)) groupBy(m => m.t || '—', (k, i) => `Round ${i} · ${k}`)
-      else push(named ? 'Games' : (block.title || 'Bracket'), ms)
+      else push(named || ownTitle ? 'Games' : (title || 'Bracket'), ms)
 
       let group = groups[groups.length - 1]
-      if (!group || named) { group = { title: named ? block.title : null, rounds: [] }; groups.push(group) }
+      if (!group || named) { group = { title: named ? title : null, rounds: [] }; groups.push(group) }
       group.rounds.push(...rounds)
       continue
     }
@@ -714,19 +740,18 @@ function parseDivision(sheet, grid) {
     if (block.rows.length) unread.push(block)
   }
 
-  // Teams: whoever actually appears, plus any roster block.
+  return { pools, groups, places, placesNote, roster, unread }
+}
+
+/** Whoever actually appears in a division, once its tabs are merged. */
+function teamsOf(d) {
   const seen = new Map()
   const add = t => { const k = norm(t); if (t && !seen.has(k)) seen.set(k, t) }
-  roster.forEach(add)
-  if (places) places.forEach(add)
-  pools.forEach(p => p.ms.forEach(m => { add(m.a); add(m.b) }))
-  groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(m => { add(m.a); add(m.b) })))
-
-  return {
-    id: sheet.key, tab: sheet.name, name: sheet.name,
-    teams: [...seen.values()].sort((x, y) => x.localeCompare(y)),
-    pools, groups, places, placesNote, unread,
-  }
+  d.roster.forEach(add)
+  if (d.places) d.places.forEach(add)
+  d.pools.forEach(p => p.ms.forEach(m => { add(m.a); add(m.b) }))
+  d.groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(m => { add(m.a); add(m.b) })))
+  return [...seen.values()].sort((x, y) => x.localeCompare(y))
 }
 
 /* --------------------------- the court schedule ------------------------- */
@@ -766,12 +791,27 @@ let draft = null   /* unsaved edits in the sheet-list box, kept across renders *
 const DIVBY = () => Object.fromEntries(model.divisions.map(d => [d.id, d]))
 
 function buildModel() {
-  const divisions = [], schedule = []
+  // Tabs are grouped by the name they were given, so the pool tab and the
+  // bracket tab of one workbook come out as a single division.
+  const byDiv = new Map()
+  const schedule = []
   views.forEach((v, i) => {
+    const s = sheets[i]
     if (!v.parsed) return
-    if (sheets[i].role === 'schedule') schedule.push(...v.parsed)
-    else if (sheets[i].role === 'division') divisions.push(v.parsed)
+    if (s.role === 'schedule') { schedule.push(...v.parsed); return }
+    if (s.role === 'raw') return
+    if (!byDiv.has(s.div)) byDiv.set(s.div, {
+      id: s.div, tab: s.name || `Sheet ${i + 1}`, name: s.name || `Sheet ${i + 1}`,
+      pools: [], groups: [], roster: [], places: null, placesNote: '',
+    })
+    const d = byDiv.get(s.div)
+    d.pools.push(...v.parsed.pools)
+    d.groups.push(...v.parsed.groups)
+    d.roster.push(...v.parsed.roster)
+    if (v.parsed.places && !d.places) { d.places = v.parsed.places; d.placesNote = v.parsed.placesNote }
   })
+  const divisions = [...byDiv.values()]
+  divisions.forEach(d => { d.teams = teamsOf(d) })
 
   const all = []
   divisions.forEach(dv => {
@@ -1150,12 +1190,16 @@ function pData() {
     const v = views[i] || {}
     const p = v.parsed
     let summary = '—'
-    if (s.role === 'division' && p) {
-      summary = `${p.pools.length} pool${p.pools.length === 1 ? '' : 's'} · `
-        + `${p.groups.reduce((n, g) => n + g.rounds.length, 0)} bracket rounds · ${p.teams.length} teams`
-        + (p.unread.length ? ` · ${p.unread.length} block${p.unread.length === 1 ? '' : 's'} not recognised` : '')
-    } else if (s.role === 'schedule' && p) {
+    if (s.role === 'schedule' && p) {
       summary = `${p.length} day${p.length === 1 ? '' : 's'} of court grid`
+    } else if (p) {
+      const rounds = p.groups.reduce((n, g) => n + g.rounds.length, 0)
+      summary = [
+        p.pools.length ? `${p.pools.length} pool${p.pools.length === 1 ? '' : 's'}` : '',
+        rounds ? `${rounds} bracket round${rounds === 1 ? '' : 's'}` : '',
+        p.places ? `${p.places.length} placings` : '',
+        p.unread.length ? `${p.unread.length} block${p.unread.length === 1 ? '' : 's'} not recognised` : '',
+      ].filter(Boolean).join(' · ') || 'nothing recognised'
     }
     return `<details class="card" style="margin-bottom:12px">
       <summary style="cursor:pointer;list-style:revert">
@@ -1212,11 +1256,12 @@ function tabs() {
   return t
 }
 
+/** A division is fed by one or more tabs; the dot reflects the worst of them. */
 function dotFor(id) {
-  const i = sheets.findIndex(s => s.key === id)
-  if (i < 0) return ''
-  const st = views[i]?.status
-  return st === 'loading' || st === 'error' ? `<span class="dot ${st}"></span>` : ''
+  const st = sheets.map((s, i) => (s.div === id ? views[i]?.status : null)).filter(Boolean)
+  if (st.includes('error')) return '<span class="dot error"></span>'
+  if (st.includes('loading')) return '<span class="dot loading"></span>'
+  return ''
 }
 
 function renderStamp() {
@@ -1300,8 +1345,8 @@ async function refresh() {
       }
       v.grid = toGrid(data?.table)
       v.parsed = sheet.role === 'schedule' ? parseSchedule(v.grid)
-               : sheet.role === 'division' ? parseDivision(sheet, v.grid)
-               : null
+               : sheet.role === 'raw' ? null
+               : parseSheet(v.grid, sheet.role === 'pool' || sheet.role === 'bracket' ? sheet.role : null)
       v.status = 'ok'; v.error = null; v.fetchedAt = Date.now()
     } catch (err) {
       v.status = 'error'; v.error = err.message || String(err); v.parsed = null
@@ -1320,7 +1365,11 @@ function setAuto(sec) {
 }
 
 function applyConfig(next) {
-  sheets = next.map((s, i) => ({ ...s, key: `d${i}_${s.id.slice(0, 5)}${s.gid}` }))
+  sheets = next.map((s, i) => ({
+    ...s,
+    key: `s${i}_${s.id.slice(0, 5)}${s.gid}`,
+    div: 'div_' + ((norm(s.name) || `sheet${i}`).replace(/[^a-z0-9]+/g, '-')),
+  }))
   views = sheets.map(() => ({ status: 'idle', grid: null, parsed: null, error: null, fetchedAt: null }))
   sel = null
   buildModel()

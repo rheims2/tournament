@@ -16,13 +16,27 @@ at `/tournament.html` and `/sheets.html`.
 ## Pointing them at your sheets
 
 Both pages have a paste-in setup. In `tournament.html` it's the **Data** tab;
-in `sheets.html` it's the **Sheets…** button. One line per sheet:
+in `sheets.html` it's the **Sheets…** button. **One line per tab**, saying what
+that tab is:
 
 ```
-Varsity Girls  | division | https://docs.google.com/spreadsheets/d/1AbCdEf…/edit#gid=0
-JV Girls       | division | https://docs.google.com/spreadsheets/d/1GhIjKl…/edit#gid=0
+Varsity Girls  | pool     | https://docs.google.com/spreadsheets/d/1AbCdEf…/edit#gid=0
+Varsity Girls  | bracket  | https://docs.google.com/spreadsheets/d/1AbCdEf…/edit#gid=884213
+JV Girls       | pool     | https://docs.google.com/spreadsheets/d/1GhIjKl…/edit#gid=0
+JV Girls       | bracket  | https://docs.google.com/spreadsheets/d/1GhIjKl…/edit#gid=402117
 Court Schedule | schedule | https://docs.google.com/spreadsheets/d/1MnOpQr…/edit#gid=0
 ```
+
+**Lines sharing a name become one division.** A workbook that keeps pool play
+on one tab and the bracket on another is two lines with the same file id and
+different `#gid=…`, and comes out as a single page tab with both on it. Six
+such workbooks is twelve lines.
+
+The roles are `pool`, `bracket`, `division` (one tab holding both, sorted out
+by its headings — the default), `schedule` and `raw`. Saying `pool` or
+`bracket` outright is worth it: a bracket tab often has no heading that gives
+it away, just a table of games, and left to guess the page would file it as
+pool play.
 
 The list is saved in your browser, so it survives reloads and is easy to fix
 mid-tournament. To put the same list in front of everyone, fill in the `SHEETS`
@@ -35,11 +49,12 @@ the top bar, and `dayDates`, which maps a day label in your sheets
 on **On the courts now** and **Up next** — without it everything else still
 works, just with no live clock.
 
-### Sheets with more than one tab
+### Finding the gid for each tab
 
-The pages read one tab at a time; Google's endpoint has no way to list the
-others. Add one line per tab, opening each in Google Sheets first and copying
-the `#gid=…` that appears in the URL.
+Google's endpoint reads one tab at a time and has no way to list the others,
+so each tab needs its own line and its own gid. Open the workbook, click the
+tab, and copy the URL from the address bar — the `#gid=…` on the end changes
+to that tab. The first tab is usually `#gid=0`.
 
 ## What each sheet has to be
 
@@ -85,7 +100,12 @@ of score columns; and optional `Game #`, `Day`, `Court`, `Pool`, `Round`,
   starts a separate one.
 - `W1`, `L3`, `Winner of 5`, `TBD` and `Bye` in a team cell are read as *where
   that slot comes from*, and shown as a dashed source chip until it's filled.
-- A block with a `Place` column becomes the division's final standings.
+- A block with a `Place` column becomes the division's final standings,
+  whichever tab it sits on.
+
+On a tab declared `pool` or `bracket`, every table of games is taken as that,
+headings or no headings — so a bare bracket tab still reads as a bracket, and
+its rounds are grouped by start time when nothing names them.
 
 **Who won is worked out from the result text.** Each comma-separated piece is
 one set and names the side that took it, so `Cougars 25-19, 23-25, 15-11`
