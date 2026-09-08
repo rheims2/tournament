@@ -43,7 +43,9 @@ export default defineConfig({
       },
       workbox: {
         // Scores must never come from cache -- only the app shell is precached.
-        navigateFallbackDenylist: [/^\/api/],
+        // sheets.html is a standalone page, not an app route: keep the SPA
+        // fallback from swallowing it.
+        navigateFallbackDenylist: [/^\/api/, /^\/sheets\.html$/],
         runtimeCaching: [],
       },
     }),
