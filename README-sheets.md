@@ -88,7 +88,21 @@ Game #   Day       Time   Court  Team A      Team B   Result
 ```
 
 Column headers are matched by name, not position, so the order doesn't matter
-and unrecognised columns are ignored. It understands `Team A`/`Team B`,
+and unrecognised columns are ignored. Two other shapes are read as well:
+
+- **Pools side by side.** Pool A in columns A–F and Pool B in H–M is read as
+  two pools, not one spliced table — the sheet is split at any column that is
+  empty top to bottom.
+- **A round-robin grid** — the same teams down the first column and across the
+  first row, results in the cells. Only the upper triangle is read; the
+  mirrored cell is the same game.
+- **Per-set score columns** (`Set 1`, `Set 2`, `Set 3`) instead of one Result
+  column.
+
+Where a result names no team (`25-20, 25-18`, as in the last two shapes), the
+first number is read as the left-hand team's, which is the usual convention.
+A `Team | W | L` block is recognised as a standings table rather than read as
+one team playing nobody, once per row. It understands `Team A`/`Team B`,
 `Home`/`Away`, or a single `Match` column reading `A vs B`; `Result` or a pair
 of score columns; and optional `Game #`, `Day`, `Court`, `Pool`, `Round`,
 `Winner` and `Place` columns.
@@ -123,7 +137,9 @@ each day.
 ### If it reads a sheet wrong
 
 Open the **Data** tab. It shows every sheet exactly as Google returned it,
-what was made of it, and how many blocks weren't recognised. Compare that
+what was made of it, and — block by block — anything it did not turn into
+games, printed verbatim with the reason why ("its header row has no team
+columns", "not a round-robin grid"). Compare that
 against the sheet and the mismatch is usually obvious. All the layout logic
 lives in one marked section of `tournament.html` (*"2. making sense of a
 grid"*) — retargeting it to a differently shaped workbook means changing that

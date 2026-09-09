@@ -454,9 +454,21 @@ function toGrid(table) {
 }
 
 /* ======================= 2. making sense of a grid ======================
-   These workbooks are laid out as stacked blocks: a heading row with one
-   filled cell, a header row naming the columns, then the rows themselves,
-   and a blank row before the next block. Everything below reads that shape.
+   A tab is read in three passes:
+
+     bands   -- split into vertical strips at any column that is empty top to
+                bottom, because pools are very often sat side by side and
+                reading whole rows would splice their columns together
+     blocks  -- inside a band, a heading row (one filled cell), a header row
+                naming the columns, its rows, and a blank row before the next
+     rows    -- each row read as a match, columns matched by name
+
+   Two shapes that are not a list of games are handled too: a round-robin
+   crosstab (the same teams down the side and across the top, results in the
+   cells), and per-set score columns instead of one result string. Anything
+   that fits none of these is kept as an unread block and shown verbatim in
+   the Data tab, so a misread is visible rather than silent.
+
    Retargeting the page to a differently-shaped workbook means changing this
    section and nothing else.
    ======================================================================== */
@@ -472,7 +484,9 @@ const KEYS = {
   result: [/^results?$/, /^scores?$/, /^sets?$/, /^final$/],
   scoreA: [/^score\s*a$/, /^sets\s*a$/, /^a\s*score$/],
   scoreB: [/^score\s*b$/, /^sets\s*b$/, /^b\s*score$/],
-  winner: [/^winner$/, /^won\s*by$/, /^w$/],
+  winner: [/^winner$/, /^won\s*by$/],
+  wins:   [/^w$/, /^wins$/],
+  losses: [/^l$/, /^losses$/],
   pool:   [/^pool$/, /^group$/],
   round:  [/^round$/, /^stage$/, /^bracket$/],
   place:  [/^place$/, /^finish$/, /^rank$/, /^seed$/, /^position$/, /^pos$/],
@@ -490,10 +504,15 @@ function keyFor(label) {
 const filled = row => row.filter(c => c !== '').length
 
 /* A header row is one where at least two cells name columns we recognise. */
+const RE_SETCOL = /^(?:set|game|s)\s*\d+$/
+
 function headerMap(row) {
   const map = {}
+  const sets = []
   let hits = 0
   row.forEach((cell, i) => {
+    // "Set 1 | Set 2 | Set 3" instead of one Result column.
+    if (RE_SETCOL.test(norm(cell))) { sets.push(i); hits++; return }
     const k = keyFor(cell)
     if (!k) return
     hits++
@@ -501,10 +520,35 @@ function headerMap(row) {
     if (k === 'teamA' && map.teamA != null && map.teamB == null) { map.teamB = i; return }
     if (map[k] == null) map[k] = i
   })
+  if (sets.length) map.sets = sets
   return hits >= 2 ? map : null
 }
 
-/* Split a sheet into { title, map, rows } blocks. */
+/**
+ * Split a sheet into vertical bands at columns that are empty all the way
+ * down. Pool A in columns A-F and Pool B in H-M is an extremely common
+ * layout, and scanning whole rows turns the two into one nonsense table with
+ * "Team A" appearing twice.
+ *
+ * A blank spacer column inside a single table would split it wrongly, so the
+ * split is only kept when at least two bands actually look like tables.
+ */
+function toBands(grid) {
+  const width = Math.max(0, ...grid.map(r => r.length))
+  const used = Array.from({ length: width }, (_, i) => grid.some(r => (r[i] ?? '') !== ''))
+  const spans = []
+  let start = null
+  for (let i = 0; i <= width; i++) {
+    if (i < width && used[i]) { if (start == null) start = i }
+    else if (start != null) { spans.push([start, i]); start = null }
+  }
+  if (spans.length < 2) return [grid]
+  const bands = spans.map(([a, b]) => grid.map(r => r.slice(a, b)))
+  const tabular = bands.filter(b => b.some(r => headerMap(r))).length
+  return tabular >= 2 ? bands : [grid]
+}
+
+/* Split a band into { title, map, rows } blocks. */
 function toBlocks(grid) {
   const blocks = []
   let title = '', cur = null
@@ -572,7 +616,7 @@ function statedWinner(text, a, b) {
 
 const SETS = /(\d{1,3})\s*[-–—]\s*(\d{1,3})/g
 /** Sets and points each side took, for the computed pool table. */
-function setTally(result, a, b) {
+function setTally(result, a, b, byPosition) {
   const out = { aSets: 0, bSets: 0, aPts: 0, bPts: 0, ok: false }
   if (!result) return out
   for (const seg of String(result).split(/[,;/]/)) {
@@ -580,6 +624,13 @@ function setTally(result, a, b) {
     if (!s) continue
     const pair = [...s.matchAll(SETS)][0]
     if (!pair) continue
+    if (byPosition) {
+      const x = +pair[1], y = +pair[2]
+      if (x > y) out.aSets++
+      else if (y > x) out.bSets++
+      out.aPts += x; out.bPts += y; out.ok = true
+      continue
+    }
     const hi = Math.max(+pair[1], +pair[2]), lo = Math.min(+pair[1], +pair[2])
     const ia = namesIn(s, a, b), ib = namesIn(s, b, a)
     if (ia && !ib)      { out.aSets++; out.aPts += hi; out.bPts += lo; out.ok = true }
@@ -613,6 +664,9 @@ function rowToMatch(row, map) {
   if (isFeeder(b)) { m.bs = b; m.b = '' } else { m.b = b }
 
   let result = at(map.result)
+  if (!result && map.sets?.length) {
+    result = map.sets.map(i => (row[i] ?? '').trim()).filter(Boolean).join(', ')
+  }
   if (!result && map.scoreA != null && map.scoreB != null) {
     const sa = at(map.scoreA), sb = at(map.scoreB)
     if (sa !== '' || sb !== '') result = `${sa}-${sb}`
@@ -625,10 +679,64 @@ function rowToMatch(row, map) {
     if (Number.isFinite(sa) && Number.isFinite(sb) && (sa || sb)) m.w = sa > sb ? 'a' : sb > sa ? 'b' : 'split'
   }
   if (!m.w) m.w = inferWinner(m.r, m.a, m.b)
+  // "25-20, 25-18" names nobody -- per-set columns and crosstab cells both
+  // look like this. The convention is that the first number is team A's.
+  if (!m.w && m.r) {
+    const byPos = crosstabWinner(m.r)
+    if (byPos) { m.w = byPos; m.byPosition = true }
+  }
   return m
 }
 
 const isPlacementRow = row => /^\d+$/.test(String(row[0] ?? '').trim())
+
+/** In a crosstab cell the row team's score is written first. */
+function crosstabWinner(cell) {
+  let aw = 0, bw = 0
+  for (const seg of String(cell).split(/[,;/]/)) {
+    const p = [...seg.matchAll(SETS)][0]
+    if (!p) continue
+    if (+p[1] > +p[2]) aw++
+    else if (+p[2] > +p[1]) bw++
+  }
+  return aw > bw ? 'a' : bw > aw ? 'b' : aw ? 'split' : null
+}
+
+/**
+ * A round-robin grid: the same teams down the first column and across the
+ * first row, each cell the result of that pairing. Read as matches from the
+ * upper triangle -- the mirrored cell below the diagonal is the same game.
+ * Returns null when the block isn't that shape.
+ */
+function asCrosstab(block) {
+  const rows = block.rows
+  if (rows.length < 3) return null
+  const labels = rows[0].slice(1).map(c => c.trim())
+  if (labels.filter(Boolean).length < 2) return null
+  const body = rows.slice(1).filter(r => (r[0] ?? '').trim())
+  const names = body.map(r => r[0].trim())
+  const seat = n => labels.findIndex(l => l && norm(l) === norm(n))
+  if (names.filter(n => seat(n) >= 0).length < 2) return null
+
+  const ms = []
+  body.forEach((row, ri) => {
+    const a = names[ri]
+    labels.forEach((b, ci) => {
+      if (!b || norm(b) === norm(a)) return
+      const cell = (row[ci + 1] ?? '').trim()
+      if (!cell || /^[-–—x]$/i.test(cell)) return
+      const mirrored = names.findIndex(n => norm(n) === norm(b))
+      if (mirrored >= 0 && mirrored < ri) return
+      ms.push({
+        n: null, day: '', t: '', c: '', pool: '', round: '',
+        a, b, r: cell,
+        w: inferWinner(cell, a, b) ?? crosstabWinner(cell),
+        byPosition: !inferWinner(cell, a, b),
+      })
+    })
+  })
+  return ms.length ? ms : null
+}
 
 /* --------------------------- block classifying -------------------------- */
 
@@ -642,6 +750,10 @@ function classify(block) {
   const map = block.map || {}
   if (map.place != null) return 'standings'
   if (RE_STANDING.test(t) && (map.team != null || block.rows.every(isPlacementRow))) return 'standings'
+  // Team | W | L is a standings table, not a list of games -- without this it
+  // reads as one team playing nobody, once per row.
+  const soloTeam = map.team ?? (map.teamB == null && map.matchup == null ? map.teamA : null)
+  if (soloTeam != null && (map.wins != null || map.losses != null)) return 'table'
   if (map.teamA != null || map.matchup != null) {
     if (map.pool != null || RE_POOL.test(t)) return 'pool'
     if (map.round != null || map.no != null || RE_BRACKET.test(t)) return 'bracket'
@@ -664,19 +776,25 @@ function classify(block) {
  * Standings and roster blocks are still recognised on their own merits.
  */
 function parseSheet(grid, force) {
-  const blocks = toBlocks(grid)
-  // The first heading in a tab is the tab's own title ("Varsity Girls —
-  // Bracket"); it names the sheet, not a sub-bracket inside it.
-  const sheetTitle = norm(blocks[0]?.title || '')
+  // The tab's own title ("Varsity Girls — Bracket") names the sheet, not a
+  // sub-bracket inside it. Taken from the full grid before banding.
+  const sheetTitle = norm(grid.find(r => filled(r) === 1)?.find(c => c !== '') || '')
+  const blocks = toBands(grid).flatMap(toBlocks)
   const pools = [], groups = [], roster = []
   let places = null, placesNote = ''
   const unread = []
 
   for (const block of blocks) {
     let kind = classify(block)
-    const ms = block.map
+    let ms = block.map
       ? block.rows.map(r => rowToMatch(r, block.map)).filter(Boolean)
       : []
+    // No named columns, but the same teams down the side and across the top:
+    // a round-robin grid, which is pool play however it is headed.
+    if (!ms.length && !block.map) {
+      const cross = asCrosstab(block)
+      if (cross) { ms = cross; kind = 'pool' }
+    }
     if (force && ms.length && (kind === 'pool' || kind === 'bracket')) kind = force
 
     if (kind === 'pool' && ms.length) {
@@ -737,10 +855,31 @@ function parseSheet(grid, force) {
       continue
     }
 
-    if (block.rows.length) unread.push(block)
+    // A standings table the sheet keeps itself: take the names, and say in the
+    // Data tab that the standings shown are computed from results instead.
+    if (kind === 'table') {
+      const col = block.map.team ?? block.map.teamA
+      for (const r of block.rows) { const n = (r[col] ?? '').trim(); if (n) roster.push(n) }
+      unread.push({ ...block, why: whyUnread(block, kind) })
+      continue
+    }
+
+    if (block.rows.length) unread.push({ ...block, why: whyUnread(block, kind) })
   }
 
   return { pools, groups, places, placesNote, roster, unread }
+}
+
+/** Said plainly in the Data tab, so a misread points at its own cause. */
+function whyUnread(block, kind) {
+  if (kind === 'table')
+    return 'a standings table. Team names were taken from it; the W–L on the division is computed from the results instead.'
+  if (kind === 'standings' || kind === 'roster') return 'read, but it holds no games.'
+  if (!block.map)
+    return 'no header row naming its columns, and not a round-robin grid.'
+  if (block.map.teamA == null && block.map.matchup == null)
+    return 'its header row has no team columns — looked for Team A/Team B, Home/Away, or a single Match column.'
+  return 'its header row was recognised but no row read as a game.'
 }
 
 /** Whoever actually appears in a division, once its tabs are merged. */
@@ -933,7 +1072,7 @@ function poolStandings(pool) {
     const A = get(m.a), B = get(m.b)
     A.played++; B.played++
     if (m.w === 'a') { A.w++; B.l++ } else if (m.w === 'b') { B.w++; A.l++ }
-    const s = setTally(m.r, m.a, m.b)
+    const s = setTally(m.r, m.a, m.b, m.byPosition)
     if (s.ok) {
       A.sw += s.aSets; A.sl += s.bSets; B.sw += s.bSets; B.sl += s.aSets
       A.pf += s.aPts;  A.pa += s.bPts;  B.pf += s.bPts;  B.pa += s.aPts
@@ -944,13 +1083,17 @@ function poolStandings(pool) {
 }
 
 function poolBlock(dv, p) {
+  // A round-robin grid carries no times or courts; empty columns just push
+  // the matchup off to the right.
+  const hasTime = p.ms.some(m => m.t || m.n)
+  const hasCourt = p.ms.some(m => m.c)
   const rows = p.ms.map(m => {
     const mm = { ...m, div: dv.id }
     const a = m.a ? `<span class="${m.w === 'a' ? 'w' : ''}">${teamBtn(m.a, dv.id)}</span>` : esc(m.as || 'TBD')
     const b = m.b ? `<span class="${m.w === 'b' ? 'w' : ''}">${teamBtn(m.b, dv.id)}</span>` : esc(m.bs || 'TBD')
     return `<tr class="${inMatch(mm) ? 'hit' : ''}">
-      <td class="t">${m.n ? '#' + esc(m.n) + ' · ' : ''}${esc(m.t || '—')}${isNow(mm) ? ' <span class="chip live">Now</span>' : ''}</td>
-      ${m.c ? `<td class="t">Ct ${esc(m.c)}</td>` : '<td class="t"></td>'}
+      ${hasTime ? `<td class="t">${m.n ? '#' + esc(m.n) + ' · ' : ''}${esc(m.t || '—')}${isNow(mm) ? ' <span class="chip live">Now</span>' : ''}</td>` : ''}
+      ${hasCourt ? `<td class="t">${m.c ? 'Ct ' + esc(m.c) : ''}</td>` : ''}
       <td class="team">${a} <span class="vs">VS</span> ${b}</td>
       <td class="res">${m.r ? esc(m.r) + (m.w === 'split' ? ' <span class="chip">Split</span>' : '')
                             : '<span style="color:var(--ink-3)">—</span>'}</td>
@@ -972,7 +1115,9 @@ function poolBlock(dv, p) {
     <div class="sec-head"><h3 class="h-sec">${esc(p.name)}</h3>
       <span class="sec-note">${p.ms.filter(m => m.r).length} of ${p.ms.length} played</span></div>
     <div class="tw"><table><thead><tr>
-      <th style="width:130px">Time</th><th style="width:70px">Court</th><th>Match</th><th style="width:32%">Result</th>
+      ${hasTime ? '<th style="width:130px">Time</th>' : ''}
+      ${hasCourt ? '<th style="width:70px">Court</th>' : ''}
+      <th>Match</th><th style="width:32%">Result</th>
     </tr></thead><tbody>${rows}</tbody></table></div>
     ${table}
   </div>`
@@ -1198,7 +1343,7 @@ function pData() {
         p.pools.length ? `${p.pools.length} pool${p.pools.length === 1 ? '' : 's'}` : '',
         rounds ? `${rounds} bracket round${rounds === 1 ? '' : 's'}` : '',
         p.places ? `${p.places.length} placings` : '',
-        p.unread.length ? `${p.unread.length} block${p.unread.length === 1 ? '' : 's'} not recognised` : '',
+        p.unread.length ? `${p.unread.length} block${p.unread.length === 1 ? '' : 's'} not shown as games` : '',
       ].filter(Boolean).join(' · ') || 'nothing recognised'
     }
     return `<details class="card" style="margin-bottom:12px">
@@ -1214,6 +1359,9 @@ function pData() {
         ${v.error ? `<div class="callout"><strong>Couldn't read this sheet.</strong> ${esc(v.error)}</div>` : ''}
         <p class="sec-note"><a href="${esc(s.url)}" target="_blank" rel="noopener">Open in Google Sheets ↗</a>
           ${v.fetchedAt ? ' · read ' + esc(new Date(v.fetchedAt).toLocaleTimeString()) : ''}</p>
+        ${(p?.unread ?? []).map(b => `<div class="callout plain" style="margin-bottom:10px">
+          <strong>${esc(b.title || 'Untitled block')}</strong> — not shown as games: ${esc(b.why)}
+          ${rawTable(b.rows)}</div>`).join('')}
         ${rawTable(v.grid)}
       </div>
     </details>`
