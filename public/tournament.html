@@ -1,0 +1,1903 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Live pools, brackets, results and court schedule, read straight from the tournament's Google Sheets.">
+<title>Tournament Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F5F2F1; --surface:#FFFFFF; --surface-2:#EFE9E8; --sunk:#EAE3E2;
+  --ink:#1A1213; --ink-2:#5C4F50; --ink-3:#8B7C7D;
+  --line:#E2D9D8; --line-2:#CFC3C2;
+  --accent:#C6161D; --accent-ink:#A0111A; --accent-soft:#FBE8E8;
+  --win:#136349; --win-soft:#E3F1EB;
+  --live:#8A5000; --live-soft:#FBEEDC;
+  --band:#141011; --band-ink:#F5F0EF; --band-ink-2:#A2938F;
+  --shadow:0 1px 2px rgba(26,18,19,.06), 0 6px 18px -12px rgba(26,18,19,.30);
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#121011; --surface:#1B1718; --surface-2:#241E1F; --sunk:#151112;
+    --ink:#F3EDEC; --ink-2:#B4A6A5; --ink-3:#877878;
+    --line:#332B2C; --line-2:#463C3D;
+    --accent:#FF4C52; --accent-ink:#FF7A7E; --accent-soft:#331A1C;
+    --win:#5FD7A4; --win-soft:#12291F;
+    --live:#F2B457; --live-soft:#33260F;
+    --band:#0C0A0B; --band-ink:#F5F0EF; --band-ink-2:#9C8D8A;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 22px -14px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121011; --surface:#1B1718; --surface-2:#241E1F; --sunk:#151112;
+  --ink:#F3EDEC; --ink-2:#B4A6A5; --ink-3:#877878;
+  --line:#332B2C; --line-2:#463C3D;
+  --accent:#FF4C52; --accent-ink:#FF7A7E; --accent-soft:#331A1C;
+  --win:#5FD7A4; --win-soft:#12291F;
+  --live:#F2B457; --live-soft:#33260F;
+  --band:#0C0A0B; --band-ink:#F5F0EF; --band-ink-2:#9C8D8A;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 22px -14px rgba(0,0,0,.8);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+img{max-width:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-text-size-adjust:100%;
+}
+h1,h2,h3,h4{font-family:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;font-weight:800;line-height:.95;margin:0;text-wrap:balance;letter-spacing:.005em}
+a{color:var(--accent-ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+
+/* ---------- top band ---------- */
+.band{position:sticky;top:0;z-index:40;background:var(--band);color:var(--band-ink);border-bottom:3px solid var(--accent)}
+.band-in{max-width:1200px;margin:0 auto;padding:10px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.mark{display:flex;align-items:baseline;gap:9px;margin-right:auto;min-width:0}
+.mark .yr{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;color:var(--accent);font-weight:600}
+.mark .nm{font-family:"Big Shoulders Display","Arial Narrow",sans-serif;font-weight:800;font-size:27px;letter-spacing:.01em;text-transform:uppercase;white-space:nowrap}
+.mark .sub{font-size:11px;color:var(--band-ink-2);letter-spacing:.04em;white-space:nowrap}
+.picker{display:flex;align-items:center;gap:8px}
+.picker label{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--band-ink-2)}
+select#teamPick,select#autoPick{
+  font:inherit;font-size:13px;background:#241E1F;color:var(--band-ink);border:1px solid #3A3132;
+  border-radius:7px;padding:6px 10px;max-width:min(60vw,290px);color-scheme:dark;
+}
+.tbtn{font:inherit;font-size:12px;background:transparent;color:var(--band-ink-2);border:1px solid #3A3132;border-radius:7px;padding:6px 9px;cursor:pointer;line-height:1}
+.tbtn:hover{color:var(--band-ink);border-color:#5A4E4F}
+.tbtn.go{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.tbtn.go:hover{filter:brightness(1.1);color:#fff}
+.tbtn[disabled]{opacity:.5;cursor:default}
+.stamp{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--band-ink-2);white-space:nowrap}
+.stamp b{color:var(--band-ink);font-weight:600}
+.stamp .bad{color:var(--accent)}
+
+/* ---------- tab rail ---------- */
+.rail{position:sticky;top:var(--bandH,56px);z-index:30;background:var(--ground);border-bottom:1px solid var(--line)}
+.rail-in{max-width:1200px;margin:0 auto;padding:0 18px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
+.tab{
+  flex:0 0 auto;appearance:none;background:none;border:0;cursor:pointer;font:inherit;
+  font-family:"Big Shoulders Display","Arial Narrow",sans-serif;font-weight:600;font-size:19px;
+  text-transform:uppercase;letter-spacing:.03em;color:var(--ink-3);
+  padding:11px 12px 9px;border-bottom:3px solid transparent;white-space:nowrap;
+}
+.tab:hover{color:var(--ink-2)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .ct{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:500;color:var(--ink-3);margin-left:5px;vertical-align:2px}
+.tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:6px;vertical-align:2px;background:transparent}
+.tab .dot.loading{background:var(--live);animation:pulse 1s ease-in-out infinite}
+.tab .dot.error{background:var(--accent)}
+@keyframes pulse{50%{opacity:.25}}
+
+main{max-width:1200px;margin:0 auto;padding:26px 18px 90px}
+section+section{margin-top:34px}
+
+/* ---------- headings ---------- */
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-ink)}
+.h-div{font-size:40px;text-transform:uppercase;margin-top:2px}
+.h-sec{font-size:26px;text-transform:uppercase;letter-spacing:.02em}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.sec-note{font-size:13px;color:var(--ink-2)}
+.lede{color:var(--ink-2);max-width:66ch;margin-top:8px}
+
+/* ---------- chips ---------- */
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.chip.court{background:var(--sunk);color:var(--ink-2);border:1px solid var(--line)}
+.chip.place{background:var(--accent-soft);color:var(--accent-ink)}
+.chip.live{background:var(--live-soft);color:var(--live)}
+.chip.src{background:transparent;border:1px dashed var(--line-2);color:var(--ink-3)}
+.chip.day{background:var(--band);color:var(--band-ink)}
+.chip.won{background:var(--win-soft);color:var(--win)}
+.chip.lost{background:var(--accent-soft);color:var(--accent-ink)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);background:var(--surface-2);border-bottom:1px solid var(--line-2);position:sticky;top:0;
+}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.hit{background:var(--accent-soft)}
+td.t{white-space:nowrap;font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+td.t .lbl{display:block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+td.team{font-weight:500}
+td.res{color:var(--ink-2);font-size:13px}
+td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:"IBM Plex Mono",monospace;font-size:13px}
+.w{color:var(--win);font-weight:600}
+.vs{color:var(--ink-3);font-size:11px;font-family:"IBM Plex Mono",monospace;padding:0 2px}
+.tname{cursor:pointer;border-bottom:1px dotted var(--line-2)}
+.tname:hover{color:var(--accent-ink);border-bottom-color:var(--accent)}
+.side .tname{border-bottom:0}
+
+/* ---------- bracket ---------- */
+.rounds{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:thin}
+.round{flex:0 0 262px;display:flex;flex-direction:column;gap:10px}
+.round-h{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);padding-bottom:6px;border-bottom:2px solid var(--line)}
+.m{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.m.hit{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--shadow)}
+.m-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:7px 10px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.m-no{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:19px;color:var(--accent);line-height:1}
+.m-t{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.side{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.side+.side{border-top:1px solid var(--line)}
+.side .nm{flex:1;min-width:0;font-size:14px;font-weight:500;overflow-wrap:anywhere}
+.side.won{background:var(--win-soft)}
+.side.won .nm{color:var(--win);font-weight:600}
+.side.tbd .nm{color:var(--ink-3);font-style:italic;font-weight:400}
+/* margin-top:auto pins the score strip to the bottom, so cards sharing a
+   grid row line up instead of trailing blank space. */
+.m-res{margin-top:auto;padding:6px 10px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);border-top:1px dashed var(--line);background:var(--sunk)}
+.m-res.pending{color:var(--ink-3)}
+
+/* ---------- cards / grids ---------- */
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(auto-fill,minmax(268px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.card h3{font-size:22px;text-transform:uppercase;margin-bottom:2px}
+.card .cnt{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.roster{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
+.roster li{font-size:14px;padding:4px 6px;border-radius:5px;cursor:pointer}
+.roster li:hover{background:var(--surface-2)}
+.roster li.hit{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.seedlist{list-style:none;margin:0;padding:0;counter-reset:s}
+.seedlist li{counter-increment:s;display:flex;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px dotted var(--line)}
+.seedlist li:last-child{border-bottom:0}
+.seedlist li::before{content:counter(s);font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--accent);min-width:14px}
+.champ{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.champ .top{background:var(--band);color:var(--band-ink);padding:7px 14px;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.champ .body{padding:13px 15px 14px}
+.champ .win{display:flex;align-items:baseline;gap:9px}
+.champ .win .n{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--accent);flex:0 0 auto}
+.champ .win h3{font-size:24px;text-transform:uppercase;line-height:1}
+.champ .win h3 .tname{border-bottom:0}
+.rules{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:14px;color:var(--ink-2)}
+.rules li{padding-left:16px;position:relative}
+.rules li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:2px;background:var(--accent)}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);padding:10px 14px;border-radius:0 8px 8px 0;font-size:14px}
+.callout.plain{border-left-color:var(--line-2);background:var(--surface-2);color:var(--ink-2)}
+
+/* ---------- court schedule grid ---------- */
+.sched th.c{font-family:"Big Shoulders Display",sans-serif;font-size:19px;font-weight:800;letter-spacing:.02em;color:var(--ink);background:var(--surface);text-transform:none;position:static}
+.sched td{padding:5px 7px;font-size:12px;border-right:1px solid var(--line)}
+.sched .b{display:block;border-radius:6px;padding:5px 7px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.03em;line-height:1.3;background:var(--surface-2);color:var(--ink-2);border-left:3px solid var(--line-2)}
+.sched .b.hit{background:var(--accent-soft);color:var(--accent-ink);border-left-color:var(--accent)}
+.sched .empty{color:var(--ink-3);text-align:center;font-family:"IBM Plex Mono",monospace;font-size:11px}
+.toggle{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:var(--surface)}
+.toggle button{appearance:none;border:0;background:none;font:inherit;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;cursor:pointer;color:var(--ink-2)}
+.toggle button[aria-pressed="true"]{background:var(--accent);color:#fff}
+
+/* ---------- my team ---------- */
+.empty-state{text-align:center;padding:56px 20px;color:var(--ink-3)}
+.empty-state h3{font-size:28px;color:var(--ink-2);text-transform:uppercase}
+.tl{display:flex;flex-direction:column;gap:0}
+.tl-day{display:flex;align-items:center;gap:10px;margin:20px 0 10px}
+.tl-day h3{font-size:23px;text-transform:uppercase}
+.tl-day .r{flex:1;height:1px;background:var(--line)}
+.mrow{display:grid;grid-template-columns:74px 1fr;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.mrow .when{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;padding-top:1px;white-space:nowrap}
+.mrow .when small{display:block;font-size:10px;font-weight:500;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+.mrow .opp{font-size:16px;font-weight:500}
+.mrow .opp .lbl{color:var(--ink-3);font-size:12px;font-family:"IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase}
+.mrow .meta{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mrow.now{background:var(--live-soft);border-radius:8px;padding-left:10px;padding-right:10px;border-bottom-color:transparent}
+
+/* ---------- setup / data ---------- */
+.setup{max-width:760px}
+.setup textarea{
+  width:100%;min-height:200px;padding:11px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;line-height:1.6;
+}
+.setup .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.btn{font:inherit;font-size:13px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 15px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--surface-2)}
+.btn.go{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.go:hover{filter:brightness(1.1)}
+.srow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:9px 0;border-bottom:1px dotted var(--line)}
+.srow:last-child{border-bottom:0}
+.srow .nm{font-weight:600;min-width:150px}
+.srow .st{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.srow .st.ok{color:var(--win)}
+.srow .st.error{color:var(--accent)}
+.srow .st.loading{color:var(--live)}
+.raw{overflow:auto;max-height:420px}
+.raw table{font-size:12.5px}
+.raw td,.raw th{padding:5px 9px;white-space:pre-wrap}
+.footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+
+@media (max-width:640px){
+  .h-div{font-size:32px}
+  .mark .nm{font-size:22px}
+  .mark .sub{display:none}
+  main{padding:20px 14px 70px}
+  .band-in,.rail-in{padding-left:14px;padding-right:14px}
+  .mrow{grid-template-columns:70px 1fr;gap:10px}
+  .mrow .when{font-size:12px}
+  .band-in{gap:8px 10px}
+  .mark{flex:1 1 100%;margin-right:0}
+  .picker{order:2;flex:1 1 auto;min-width:0}
+  .picker label{flex:0 0 auto}
+  select#teamPick{flex:1;max-width:none;min-width:0}
+  .stamp{order:4;flex:1 1 100%}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{
+  .band,.rail,.tbtn,.picker,.toggle{display:none!important}
+  body{background:#fff;font-size:11px}
+  .m,.card,.tw{break-inside:avoid;box-shadow:none}
+  .rounds{overflow:visible;flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="band-in">
+    <div class="mark">
+      <span class="yr" id="mYear"></span>
+      <span class="nm" id="mName">Tournament</span>
+      <span class="sub" id="mSub"></span>
+    </div>
+    <div class="picker">
+      <label for="teamPick">Follow a team</label>
+      <select id="teamPick"><option value="">All teams</option></select>
+    </div>
+    <span class="stamp" id="stamp"></span>
+    <select class="tbtn" id="autoPick" title="Re-read the sheets on a timer">
+      <option value="0">Auto off</option>
+      <option value="30">30s</option>
+      <option value="60">1 min</option>
+      <option value="120">2 min</option>
+      <option value="300">5 min</option>
+    </select>
+    <button class="tbtn" id="themeBtn" type="button" aria-label="Switch colour theme">Theme</button>
+    <button class="tbtn" id="printBtn" type="button">Print</button>
+    <button class="tbtn go" id="refreshBtn" type="button">Refresh</button>
+  </div>
+</header>
+<nav class="rail"><div class="rail-in" id="rail" role="tablist" aria-label="Tournament sections"></div></nav>
+<main id="panels"></main>
+
+<script>
+/* ===========================================================================
+   TOURNAMENT LIVE
+   The Cougar-tournament page, but reading its data out of Google Sheets on
+   every Refresh instead of having it typed in.
+
+   Sheets are read through Google's gviz endpoint, loaded in a <script> tag
+   (JSONP). That is the only way a plain HTML file can read a Sheet: none of
+   the Sheets export URLs send CORS headers, so fetch() against them is
+   blocked. Nothing here needs a server, an API key, or a Google login -- each
+   sheet just has to be a real Google Sheet shared "Anyone with the link".
+
+   TWO THINGS TO CONFIGURE, both right below:
+     EVENT   -- the name in the top bar, and the dates that drive "on now"
+     SHEETS  -- one entry per sheet, with the role that says how to read it
+   Leave SHEETS empty and the page opens on its own setup screen instead,
+   keeping what you paste in the browser. Everything else is derived from
+   whatever the sheets actually contain.
+   =========================================================================== */
+
+const EVENT = {
+  name: "Omaha Classic 2026",
+  year: "",
+  sub: "",
+  /* Day label -> ISO date. Only needed to light up "On now" and "Up next";
+     without it the page still shows everything, just without a live clock.
+     e.g. { "Friday": "2026-08-28", "Saturday": "2026-08-29" }              */
+  dayDates: {},
+  /* How long a game slot runs, for the "on now" window. */
+  slotMinutes: 60,
+}
+
+const SHEETS = [
+  // One entry per TAB. Entries sharing a name become one division, so a
+  // workbook split across several tabs comes out as a single page tab.
+  //
+  // The six Omaha Classic workbooks, with the tabs each one has. Paste each
+  // tab's link in place of the empty string -- open the tab in Google Sheets
+  // and copy the address bar; the #gid=… on the end is that tab.
+  //
+  // { name: 'Girls Varsity', role: 'pool',    url: '' },   // "Girls V Pool"
+  // { name: 'Girls Varsity', role: 'bracket', url: '' },   // "G V Schedule"
+  //
+  // { name: 'Girls JV1',     role: 'pool',    url: '' },   // "Girls JV1 P"
+  // { name: 'Girls JV1',     role: 'bracket', url: '' },   // "G JV1 Schedule"
+  //
+  // { name: 'Girls JV2',     role: 'pool',    url: '' },   // "Girls JV2 P"
+  // { name: 'Girls JV2',     role: 'bracket', url: '' },   // "G JV2 Schedule"
+  //
+  // { name: 'Boys Varsity',  role: 'pool',    url: '' },   // "Boys Varsity Pool"
+  // { name: 'Boys Varsity',  role: 'bracket', url: '' },   // "BV Schedule"
+  //
+  // { name: 'Boys JV',       role: 'pool',    url: '' },   // "Boys JV Pool"
+  // { name: 'Boys JV',       role: 'bracket', url: '' },   // "B JV Schedule"
+  //
+  // Girls JH keeps four tabs; all four are one division:
+  // { name: 'Girls JH',      role: 'pool',    url: '' },   // "JH Pool Sched"
+  // { name: 'Girls JH',      role: 'pool',    url: '' },   // "JH Pool Results"
+  // { name: 'Girls JH',      role: 'bracket', url: '' },   // "JH Gold Div"
+  // { name: 'Girls JH',      role: 'bracket', url: '' },   // "JH Silver Div"
+  //
+  // role: 'pool'     fixtures and/or a score matrix
+  //       'bracket'  a drawn bracket
+  //       'division' work it out from the headings
+  //       'schedule' a master court grid: times across, courts down
+  //       'raw'      no parsing, just show the sheet as a table
+]
+</script>
+
+<script>
+(() => {
+'use strict'
+
+const STORE_SHEETS = 'tournamentLive.sheets.v1'
+const STORE_AUTO   = 'tournamentLive.auto.v1'
+const TIMEOUT_MS   = 15000
+
+const $ = (s, r) => (r || document).querySelector(s)
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
+
+const store = {
+  get(k) { try { return localStorage.getItem(k) } catch { return null } },
+  set(k, v) { try { localStorage.setItem(k, v) } catch { /* private mode */ } },
+  del(k) { try { localStorage.removeItem(k) } catch { /* private mode */ } },
+}
+
+/* ======================= 1. reading a sheet ============================= */
+
+function parseLink(raw) {
+  const text = String(raw).trim()
+  if (!text) return null
+  const id = text.match(/\/(?:spreadsheets|file)\/d\/([A-Za-z0-9_-]{20,})/)?.[1]
+          ?? text.match(/[?&]id=([A-Za-z0-9_-]{20,})/)?.[1]
+          ?? (/^[A-Za-z0-9_-]{20,}$/.test(text) ? text : null)
+  return id ? { id, gid: text.match(/[#?&]gid=(\d+)/)?.[1] ?? '0' } : null
+}
+const sheetUrl = (id, gid) => `https://docs.google.com/spreadsheets/d/${id}/edit#gid=${gid}`
+
+/* "Name | role | link" -- role optional, defaults to division. */
+function parseLines(text) {
+  return String(text).split('\n').map(line => {
+    const t = line.trim()
+    if (!t || t.startsWith('#')) return null
+    const parts = t.split('|').map(s => s.trim())
+    const link = parseLink(parts[parts.length - 1])
+    if (!link) return null
+    const middle = parts.slice(0, -1)
+    let role = 'division'
+    const roleIdx = middle.findIndex(p => /^(division|pool|bracket|schedule|raw)$/i.test(p))
+    if (roleIdx >= 0) { role = middle[roleIdx].toLowerCase(); middle.splice(roleIdx, 1) }
+    return { name: middle.join(' | ') || '', role, id: link.id, gid: link.gid,
+             url: sheetUrl(link.id, link.gid) }
+  }).filter(Boolean)
+}
+
+function loadConfig() {
+  const saved = store.get(STORE_SHEETS)
+  if (saved) { const p = parseLines(saved); if (p.length) return p }
+  return (window.SHEETS || []).map(s => {
+    const link = parseLink(s.url || s.id || '')
+    if (!link) return null
+    const gid = s.gid != null ? String(s.gid) : link.gid
+    return { name: s.name || '', role: (s.role || 'division').toLowerCase(),
+             id: link.id, gid, url: sheetUrl(link.id, gid) }
+  }).filter(Boolean)
+}
+
+let cbSeq = 0
+/* JSONP, not fetch() -- see the note at the top of the file. */
+function fetchTab(sheet) {
+  return new Promise((resolve, reject) => {
+    const cb = `__gviz_cb_${Date.now().toString(36)}_${cbSeq++}`
+    const script = document.createElement('script')
+    let settled = false
+    const finish = (fn, arg) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer); delete window[cb]; script.remove(); fn(arg)
+    }
+    const timer = setTimeout(() => finish(reject, new Error('No answer from Google within 15 seconds.')), TIMEOUT_MS)
+    window[cb] = data => finish(resolve, data)
+    script.onerror = () => finish(reject, new Error('Could not reach docs.google.com.'))
+    script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.id)}`
+      + `/gviz/tq?tqx=out:json;responseHandler:${cb}`
+      + `&gid=${encodeURIComponent(sheet.gid)}&_=${Date.now()}`
+    document.head.append(script)
+  })
+}
+
+const GVIZ_DATE = /^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)$/
+function cellText(cell) {
+  if (!cell) return ''
+  if (cell.f != null && cell.f !== '') return String(cell.f).trim()
+  const v = cell.v
+  if (v == null || v === '') return ''
+  if (typeof v === 'string') {
+    const d = GVIZ_DATE.exec(v)
+    if (d) {
+      const [, y, mo, da, h, mi, s] = d
+      const dt = new Date(+y, +mo, +da, +(h || 0), +(mi || 0), +(s || 0))
+      return h != null ? dt.toLocaleString() : dt.toLocaleDateString()
+    }
+  }
+  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'
+  return String(v).trim()
+}
+
+/* The sheet exactly as it looks in Google, header row included: gviz lifts
+   row 1 into column labels when it looks like a header, and these workbooks
+   put real content up there. */
+function toGrid(table) {
+  const cols = table?.cols ?? []
+  const body = (table?.rows ?? []).map(r => cols.map((_, i) => cellText(r?.c?.[i])))
+  const labels = cols.map(c => String(c?.label ?? '').trim())
+  const all = labels.some(Boolean) ? [labels, ...body] : body
+  while (all.length && all[all.length - 1].every(c => c === '')) all.pop()
+  let w = cols.length
+  while (w > 1 && all.every(row => (row[w - 1] ?? '') === '')) w--
+  return all.map(row => Array.from({ length: w }, (_, i) => row[i] ?? ''))
+}
+
+/* ======================= 2. making sense of a grid ======================
+   A tab is read in three passes:
+
+     bands   -- split into vertical strips at any column that is empty top to
+                bottom, because pools are very often sat side by side and
+                reading whole rows would splice their columns together
+     blocks  -- inside a band, a heading row (one filled cell), a header row
+                naming the columns, its rows, and a blank row before the next
+     rows    -- each row read as a match, columns matched by name
+
+   Two shapes that are not a list of games are handled too: a round-robin
+   crosstab (the same teams down the side and across the top, results in the
+   cells), and per-set score columns instead of one result string. Anything
+   that fits none of these is kept as an unread block and shown verbatim in
+   the Data tab, so a misread is visible rather than silent.
+
+   Retargeting the page to a differently-shaped workbook means changing this
+   section and nothing else.
+   ======================================================================== */
+
+const KEYS = {
+  no:     [/^#$/, /^game\s*#?$/, /^match\s*#?$/, /^no\.?$/, /^game\s*(no|number)$/],
+  day:    [/^day$/, /^date$/],
+  time:   [/^time$/, /^start(\s*time)?$/],
+  court:  [/^court$/, /^ct\.?$/, /^courts?$/],
+  teamA:  [/^team\s*a$/, /^team\s*1$/, /^home$/, /^team$/, /^teams?$/],
+  teamB:  [/^team\s*b$/, /^team\s*2$/, /^away$/, /^opponent$/, /^vs\.?$/],
+  matchup:[/^match(up)?$/, /^game$/, /^pairing$/],
+  result: [/^results?$/, /^scores?$/, /^sets?$/, /^final$/],
+  scoreA: [/^score\s*a$/, /^sets\s*a$/, /^a\s*score$/],
+  scoreB: [/^score\s*b$/, /^sets\s*b$/, /^b\s*score$/],
+  winner: [/^winner$/, /^won\s*by$/],
+  wins:   [/^w$/, /^wins$/],
+  losses: [/^l$/, /^losses$/],
+  pool:   [/^pool$/, /^group$/],
+  round:  [/^round$/, /^stage$/, /^bracket$/],
+  place:  [/^place$/, /^finish$/, /^rank$/, /^seed$/, /^position$/, /^pos$/],
+  team:   [/^team$/, /^teams$/, /^school$/, /^club$/],
+}
+const norm = s => String(s).toLowerCase().replace(/[.:]/g, '').replace(/\s+/g, ' ').trim()
+
+function keyFor(label) {
+  const n = norm(label)
+  if (!n) return null
+  for (const [key, pats] of Object.entries(KEYS)) if (pats.some(p => p.test(n))) return key
+  return null
+}
+
+const filled = row => row.filter(c => c !== '').length
+
+/* A header row is one where at least two cells name columns we recognise. */
+const RE_SETCOL = /^(?:set|game|s)\s*\d+$/
+
+function headerMap(row) {
+  const map = {}
+  const sets = []
+  let hits = 0
+  row.forEach((cell, i) => {
+    // "Set 1 | Set 2 | Set 3" instead of one Result column.
+    if (RE_SETCOL.test(norm(cell))) { sets.push(i); hits++; return }
+    const k = keyFor(cell)
+    if (!k) return
+    hits++
+    // teamA's pattern also matches a bare "Team"; the second such column is B.
+    if (k === 'teamA' && map.teamA != null && map.teamB == null) { map.teamB = i; return }
+    if (map[k] == null) map[k] = i
+  })
+  if (sets.length) map.sets = sets
+  return hits >= 2 ? map : null
+}
+
+/**
+ * Split a sheet into vertical bands at columns that are empty all the way
+ * down. Pool A in columns A-F and Pool B in H-M is an extremely common
+ * layout, and scanning whole rows turns the two into one nonsense table with
+ * "Team A" appearing twice.
+ *
+ * A blank spacer column inside a single table would split it wrongly, so the
+ * split is only kept when at least two bands actually look like tables.
+ */
+function toBands(grid) {
+  const width = Math.max(0, ...grid.map(r => r.length))
+  const used = Array.from({ length: width }, (_, i) => grid.some(r => (r[i] ?? '') !== ''))
+  const spans = []
+  let start = null
+  for (let i = 0; i <= width; i++) {
+    if (i < width && used[i]) { if (start == null) start = i }
+    else if (start != null) { spans.push([start, i]); start = null }
+  }
+  if (spans.length < 2) return [grid]
+  const bands = spans.map(([a, b]) => grid.map(r => r.slice(a, b)))
+  const tabular = bands.filter(b => b.some(r => headerMap(r))).length
+  return tabular >= 2 ? bands : [grid]
+}
+
+/* Split a band into { title, map, rows } blocks. */
+function toBlocks(grid) {
+  const blocks = []
+  let title = '', cur = null
+  for (const row of grid) {
+    const n = filled(row)
+    if (n === 0) { cur = null; continue }
+    if (n === 1) { title = row.find(c => c !== ''); cur = null; continue }
+    const map = headerMap(row)
+    if (map) { cur = { title, map, rows: [] }; blocks.push(cur); continue }
+    if (cur) cur.rows.push(row)
+    else { cur = { title, map: null, rows: [row] }; blocks.push(cur) }
+  }
+  return blocks.filter(b => b.rows.length)
+}
+
+/* ------------------------------ matches -------------------------------- */
+
+const FEEDER = /^(?:(?:winner|loser|w|l)\s*(?:of)?\s*(?:game|match|#)?\s*\d+|[wl]\d+|bye|tbd|seed\s*\d+|\d+(?:st|nd|rd|th)\s+\w+)$/i
+const isFeeder = s => FEEDER.test(String(s).trim())
+
+const toks = s => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+/** Whole-word tokens of `name` that `other` does not also have. */
+function marks(name, other) {
+  const o = new Set(toks(other))
+  const m = toks(name).filter(t => !o.has(t))
+  return m.length ? m : toks(name)
+}
+const namesIn = (text, name, other) => {
+  const t = new Set(toks(text))
+  return marks(name, other).some(m => t.has(m))
+}
+
+/**
+ * Who won, from the result text. Each comma-separated piece is one set, and
+ * the piece names the side that took it ("Cougars 25-19, 23-25, 15-11") --
+ * so counting the pieces that name each side gives the match, and an even
+ * split is a split. Returns 'a', 'b', 'split' or null.
+ */
+function inferWinner(result, a, b) {
+  if (!result || !a || !b) return null
+  let aw = 0, bw = 0
+  for (const seg of String(result).split(/[,;/]/)) {
+    const s = seg.trim()
+    if (!s) continue
+    const ia = namesIn(s, a, b), ib = namesIn(s, b, a)
+    if (ia && !ib) aw++
+    else if (ib && !ia) bw++
+  }
+  if (aw > bw) return 'a'
+  if (bw > aw) return 'b'
+  return aw > 0 ? 'split' : null
+}
+
+/** An explicit Winner column, however it names the side. */
+function statedWinner(text, a, b) {
+  const s = norm(text)
+  if (!s) return null
+  if (s === 'a' || s === 'home' || s === '1') return 'a'
+  if (s === 'b' || s === 'away' || s === '2') return 'b'
+  if (/split|tie|draw/.test(s)) return 'split'
+  if (a && namesIn(s, a, b)) return 'a'
+  if (b && namesIn(s, b, a)) return 'b'
+  return null
+}
+
+const SETS = /(\d{1,3})\s*[-–—]\s*(\d{1,3})/g
+/** Sets and points each side took, for the computed pool table. */
+function setTally(result, a, b, byPosition) {
+  const out = { aSets: 0, bSets: 0, aPts: 0, bPts: 0, ok: false }
+  if (!result) return out
+  for (const seg of String(result).split(/[,;/]/)) {
+    const s = seg.trim()
+    if (!s) continue
+    const pair = [...s.matchAll(SETS)][0]
+    if (!pair) continue
+    if (byPosition) {
+      const x = +pair[1], y = +pair[2]
+      if (x > y) out.aSets++
+      else if (y > x) out.bSets++
+      out.aPts += x; out.bPts += y; out.ok = true
+      continue
+    }
+    const hi = Math.max(+pair[1], +pair[2]), lo = Math.min(+pair[1], +pair[2])
+    const ia = namesIn(s, a, b), ib = namesIn(s, b, a)
+    if (ia && !ib)      { out.aSets++; out.aPts += hi; out.bPts += lo; out.ok = true }
+    else if (ib && !ia) { out.bSets++; out.bPts += hi; out.aPts += lo; out.ok = true }
+  }
+  return out
+}
+
+/** One row of a block, as a match -- or null if it isn't one. */
+function rowToMatch(row, map) {
+  const at = i => (i == null ? '' : (row[i] ?? '').trim())
+  let a = at(map.teamA), b = at(map.teamB)
+
+  if (!b && map.matchup != null) {
+    const parts = at(map.matchup).split(/\s+(?:vs?\.?|v\.?|versus|–|—)\s+/i)
+    if (parts.length === 2) { a = parts[0].trim(); b = parts[1].trim() }
+  }
+  if (!a && !b) return null
+
+  const m = {
+    n: at(map.no).replace(/^#/, '') || null,
+    day: at(map.day) || '',
+    t: at(map.time) || '',
+    c: at(map.court) || '',
+    pool: at(map.pool) || '',
+    round: at(map.round) || '',
+  }
+  // A cell holding "W3" or "Winner of 5" names where a team comes from,
+  // not a team -- the bracket shows it as a source chip until it is filled.
+  if (isFeeder(a)) { m.as = a; m.a = '' } else { m.a = a }
+  if (isFeeder(b)) { m.bs = b; m.b = '' } else { m.b = b }
+
+  let result = at(map.result)
+  if (!result && map.sets?.length) {
+    result = map.sets.map(i => (row[i] ?? '').trim()).filter(Boolean).join(', ')
+  }
+  if (!result && map.scoreA != null && map.scoreB != null) {
+    const sa = at(map.scoreA), sb = at(map.scoreB)
+    if (sa !== '' || sb !== '') result = `${sa}-${sb}`
+  }
+  m.r = result || null
+
+  m.w = statedWinner(at(map.winner), m.a, m.b)
+  if (!m.w && map.scoreA != null && map.scoreB != null) {
+    const sa = +at(map.scoreA), sb = +at(map.scoreB)
+    if (Number.isFinite(sa) && Number.isFinite(sb) && (sa || sb)) m.w = sa > sb ? 'a' : sb > sa ? 'b' : 'split'
+  }
+  if (!m.w) m.w = inferWinner(m.r, m.a, m.b)
+  // "25-20, 25-18" names nobody -- per-set columns and crosstab cells both
+  // look like this. The convention is that the first number is team A's.
+  if (!m.w && m.r) {
+    const byPos = crosstabWinner(m.r)
+    if (byPos) { m.w = byPos; m.byPosition = true }
+  }
+  return m
+}
+
+const isPlacementRow = row => /^\d+$/.test(String(row[0] ?? '').trim())
+
+/** In a crosstab cell the row team's score is written first. */
+function crosstabWinner(cell) {
+  let aw = 0, bw = 0
+  for (const seg of String(cell).split(/[,;/]/)) {
+    const p = [...seg.matchAll(SETS)][0]
+    if (!p) continue
+    if (+p[1] > +p[2]) aw++
+    else if (+p[2] > +p[1]) bw++
+  }
+  return aw > bw ? 'a' : bw > aw ? 'b' : aw ? 'split' : null
+}
+
+/**
+ * A round-robin grid: the same teams down the first column and across the
+ * first row, each cell the result of that pairing. Read as matches from the
+ * upper triangle -- the mirrored cell below the diagonal is the same game.
+ * Returns null when the block isn't that shape.
+ */
+function asCrosstab(block) {
+  const rows = block.rows
+  if (rows.length < 3) return null
+  const labels = rows[0].slice(1).map(c => c.trim())
+  if (labels.filter(Boolean).length < 2) return null
+  const body = rows.slice(1).filter(r => (r[0] ?? '').trim())
+  const names = body.map(r => r[0].trim())
+  const seat = n => labels.findIndex(l => l && norm(l) === norm(n))
+  if (names.filter(n => seat(n) >= 0).length < 2) return null
+
+  const ms = []
+  body.forEach((row, ri) => {
+    const a = names[ri]
+    labels.forEach((b, ci) => {
+      if (!b || norm(b) === norm(a)) return
+      const cell = (row[ci + 1] ?? '').trim()
+      if (!cell || /^[-–—x]$/i.test(cell)) return
+      const mirrored = names.findIndex(n => norm(n) === norm(b))
+      if (mirrored >= 0 && mirrored < ri) return
+      ms.push({
+        n: null, day: '', t: '', c: '', pool: '', round: '',
+        a, b, r: cell,
+        w: inferWinner(cell, a, b) ?? crosstabWinner(cell),
+        byPosition: !inferWinner(cell, a, b),
+      })
+    })
+  })
+  return ms.length ? ms : null
+}
+
+/* --------------------------- block classifying -------------------------- */
+
+const RE_POOL     = /\bpool|\bgroup\b|round\s*robin/i
+const RE_BRACKET  = /bracket|round\s*\d|semi|final|champ|placement|elimination|consolation|quarter|winners|losers/i
+const RE_STANDING = /standing|final\s*place|placement\s*result|finish|overall/i
+const RE_ROSTER   = /team|roster|entr|club|school/i
+
+function classify(block) {
+  const t = block.title || ''
+  const map = block.map || {}
+  if (map.place != null) return 'standings'
+  if (RE_STANDING.test(t) && (map.team != null || block.rows.every(isPlacementRow))) return 'standings'
+  // Team | W | L is a standings table, not a list of games -- without this it
+  // reads as one team playing nobody, once per row.
+  const soloTeam = map.team ?? (map.teamB == null && map.matchup == null ? map.teamA : null)
+  if (soloTeam != null && (map.wins != null || map.losses != null)) return 'table'
+  if (map.teamA != null || map.matchup != null) {
+    if (map.pool != null || RE_POOL.test(t)) return 'pool'
+    if (map.round != null || map.no != null || RE_BRACKET.test(t)) return 'bracket'
+    return 'pool'
+  }
+  if (RE_ROSTER.test(t) && filled(block.rows[0]) <= 2) return 'roster'
+  return 'other'
+}
+
+/* ------------------------- a whole division sheet ----------------------- */
+
+/**
+ * One tab, read into the parts a division is made of.
+ *
+ * `force` is 'pool' or 'bracket' when the tab is declared to be one of those,
+ * and then its match blocks are taken at their word. That matters for a
+ * workbook that splits pool play and the bracket across two tabs: a bracket
+ * tab often has no "Semifinals" heading to give itself away, just a table of
+ * games, and guessing from headings alone would file it as pool play.
+ * Standings and roster blocks are still recognised on their own merits.
+ */
+function parseSheet(grid, force) {
+  const tpl = readTemplate(grid, force)
+  if (tpl) return tpl
+
+  // The tab's own title ("Varsity Girls — Bracket") names the sheet, not a
+  // sub-bracket inside it. Taken from the full grid before banding.
+  const sheetTitle = norm(grid.find(r => filled(r) === 1)?.find(c => c !== '') || '')
+  const blocks = toBands(grid).flatMap(toBlocks)
+  const pools = [], groups = [], roster = []
+  let places = null, placesNote = ''
+  const unread = []
+
+  for (const block of blocks) {
+    let kind = classify(block)
+    let ms = block.map
+      ? block.rows.map(r => rowToMatch(r, block.map)).filter(Boolean)
+      : []
+    // No named columns, but the same teams down the side and across the top:
+    // a round-robin grid, which is pool play however it is headed.
+    if (!ms.length && !block.map) {
+      const cross = asCrosstab(block)
+      if (cross) { ms = cross; kind = 'pool' }
+    }
+    if (force && ms.length && (kind === 'pool' || kind === 'bracket')) kind = force
+
+    if (kind === 'pool' && ms.length) {
+      // A Pool column splits one block into several pools; otherwise the
+      // block's own heading names it.
+      const byPool = new Map()
+      for (const m of ms) {
+        const key = m.pool || block.title || 'Pool play'
+        if (!byPool.has(key)) byPool.set(key, [])
+        byPool.get(key).push(m)
+      }
+      for (const [name, list] of byPool) pools.push({ name, note: '', ms: list })
+      continue
+    }
+
+    if (kind === 'bracket' && ms.length) {
+      // A title that names a bracket outright ("5th place bracket") opens a
+      // separate one; every other bracket block is another round of the one
+      // already open, so the rounds line up as columns the way a bracket reads.
+      const title = block.title || ''
+      const ownTitle = norm(title) === sheetTitle      // the tab's name, not a round's
+      const named = /\bbracket\b/i.test(title) && !ownTitle
+      const rounds = []
+      const push = (name, list) => list.length && rounds.push({ name, ms: list })
+      const groupBy = (keyOf, label) => {
+        const by = new Map()
+        for (const m of ms) {
+          const k = keyOf(m)
+          if (!by.has(k)) by.set(k, [])
+          by.get(k).push(m)
+        }
+        let i = 0
+        for (const [k, v] of by) push(label(k, ++i), v)
+      }
+      if (ms.some(m => m.round)) groupBy(m => m.round || 'Round', k => k)
+      else if (!named && !ownTitle && RE_BRACKET.test(title)) push(title, ms)
+      else if (ms.some(m => m.t)) groupBy(m => m.t || '—', (k, i) => `Round ${i} · ${k}`)
+      else push(named || ownTitle ? 'Games' : (title || 'Bracket'), ms)
+
+      let group = groups[groups.length - 1]
+      if (!group || named) { group = { title: named ? title : null, rounds: [] }; groups.push(group) }
+      group.rounds.push(...rounds)
+      continue
+    }
+
+    if (kind === 'standings') {
+      const map = block.map || {}
+      const list = block.rows.map(r => {
+        if (map.team != null) return (r[map.team] ?? '').trim()
+        return (r.find((c, i) => c !== '' && !/^\d+$/.test(c) && i !== map.place) ?? '').trim()
+      }).filter(Boolean)
+      if (list.length) { places = list; placesNote = block.title || '' }
+      continue
+    }
+
+    if (kind === 'roster') {
+      for (const r of block.rows) for (const c of r) if (c && !/^\d+$/.test(c)) roster.push(c.trim())
+      continue
+    }
+
+    // A standings table the sheet keeps itself: take the names, and say in the
+    // Data tab that the standings shown are computed from results instead.
+    if (kind === 'table') {
+      const col = block.map.team ?? block.map.teamA
+      for (const r of block.rows) { const n = (r[col] ?? '').trim(); if (n) roster.push(n) }
+      unread.push({ ...block, why: whyUnread(block, kind) })
+      continue
+    }
+
+    if (block.rows.length) unread.push({ ...block, why: whyUnread(block, kind) })
+  }
+
+  return { pools, groups, places, placesNote, roster, unread }
+}
+
+/** Said plainly in the Data tab, so a misread points at its own cause. */
+function whyUnread(block, kind) {
+  if (kind === 'table')
+    return 'a standings table. Team names were taken from it; the W–L on the division is computed from the results instead.'
+  if (kind === 'standings' || kind === 'roster') return 'read, but it holds no games.'
+  if (!block.map)
+    return 'no header row naming its columns, and not a round-robin grid.'
+  if (block.map.teamA == null && block.map.matchup == null)
+    return 'its header row has no team columns — looked for Team A/Team B, Home/Away, or a single Match column.'
+  return 'its header row was recognised but no row read as a game.'
+}
+
+/** Whoever actually appears in a division, once its tabs are merged. */
+const RE_SLOT = /^(?:\d+(?:st|nd|rd|th)\s*seed|seed\s*\d+|winner\b.*|loser\b.*|bye|tbd|[A-Za-z]{1,2}\d{1,2}|#[A-Z/]+[!?]?.*)$/i
+function teamsOf(d) {
+  const seen = new Map()
+  const add = t => {
+    const k = norm(t)
+    if (t && !RE_SLOT.test(t.trim()) && !seen.has(k)) seen.set(k, t)
+  }
+  d.roster.forEach(add)
+  if (d.places) d.places.forEach(add)
+  d.pools.forEach(p => p.ms.forEach(m => { add(m.a); add(m.b) }))
+  d.groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(m => { add(m.a); add(m.b) })))
+  return [...seen.values()].sort((x, y) => x.localeCompare(y))
+}
+
+/* ================= 2b. the pool-sheet / bracket template ================
+   The workbooks these tournaments are run from are generated from a template
+   that looks nothing like a list of games, so it gets a reader of its own,
+   tried before the generic one.
+
+   A POOL tab holds, per pool:
+     - a roster: "Pool A" with the team names under it
+     - a score matrix anchored on a "+/- Total" cell: teams down the left in
+       merged 3-row bands, opponents across the top in merged 3-column bands,
+       and inside each cell the two team names over a "Set 1"/"Set 2" pair of
+       score boxes
+     - a fixture list: "Match A1 | 13:00:00 | Cougars V | vs | Warriors Silver"
+
+   A BRACKET tab is a bracket *drawn* in cells. Each game is three cells in a
+   row -- label, time, "Court n" -- with its two entrants in the same column
+   above and below. Whoever is not named there is decided by a line drawn
+   between cells, which carries no value, so those slots stay open rather
+   than being guessed at.
+
+   Merged cells matter: Google returns a value only at a merged range's
+   top-left corner and blanks for the rest, so everything here reads anchors
+   and steps over the gaps.
+   ======================================================================== */
+
+const isClock = v => RE_CLOCK.test(String(v).trim())
+
+function readTemplate(grid, force) {
+  const H = grid.length
+  const W = Math.max(0, ...grid.map(r => r.length))
+  const at = (r, c) => String(grid[r]?.[c] ?? '').trim()
+
+  /* --- rosters: "Pool A" over its teams (the matrix copy has "Court n") --- */
+  const pools = []
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!/^pool\s+\S+$/i.test(at(r, c))) continue
+    const first = at(r + 1, c)
+    if (!first || /^court/i.test(first)) continue
+    const teams = []
+    for (let k = r + 1; k < H && at(k, c); k++) teams.push(at(k, c))
+    if (teams.length) pools.push({ name: at(r, c), row: r, teams, ms: [] })
+  }
+
+  /* --- score matrices, anchored on "+/- Total" --- */
+  const scores = new Map()      // pair -> { text, a } (a names which side is written first)
+  const pairs = []              // every pairing the matrix defines, game or not
+  const seenPair = new Set()
+  const key = (a, b) => [norm(a), norm(b)].sort().join('||')
+  const matrices = []
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!/^\+\/-\s*total$/i.test(at(r, c))) continue
+    const poolName = at(r, c - 1)
+    const court = /^court/i.test(at(r + 1, c - 1)) ? at(r + 1, c - 1).replace(/^court\s*/i, '') : ''
+    // Opponents run across the top until the summary columns begin.
+    const cols = []
+    for (let k = c + 1; k < W; k++) {
+      const v = at(r, k)
+      if (!v) continue
+      if (/^(wins|losses|%|place|head|percent|point|rank)/i.test(v)) break
+      cols.push({ name: v, col: k })
+    }
+    // The matrix is square, so the teams down the side are as many again.
+    const rows = []
+    for (let k = r + 2; k < H && rows.length < cols.length; k++) {
+      if (at(k, c - 1)) rows.push({ name: at(k, c - 1), row: k })
+    }
+    if (!cols.length || rows.length !== cols.length) continue
+    matrices.push({ poolName, court, row: r })
+
+    // Both halves are read, not just the upper triangle: the template mirrors
+    // every pairing, and a scorer fills in whichever box they land on -- the
+    // one real score in these workbooks sits below the diagonal. The sub-labels
+    // inside each cell say which side is written first, so the orientation
+    // travels with the score rather than being assumed.
+    rows.forEach((tr, i) => cols.forEach((tc, j) => {
+      if (i === j) return
+      const a = at(tr.row, tc.col + 1) || tr.name
+      const b = at(tr.row, tc.col + 2) || tc.name
+      const k = key(a, b)
+      if (!seenPair.has(k)) { seenPair.add(k); pairs.push({ a, b, pool: poolName, court }) }
+      const sets = []
+      for (let n = 1; n <= 5; n++) {
+        if (!/^set/i.test(at(tr.row + n, tc.col))) break
+        const x = at(tr.row + n, tc.col + 1), y = at(tr.row + n, tc.col + 2)
+        if (x !== '' || y !== '') sets.push(`${x || 0}-${y || 0}`)
+      }
+      if (sets.length && !scores.has(k)) scores.set(k, { text: sets.join(', '), a })
+    }))
+  }
+
+  /* --- a legend of seed codes ("A1" -> "LC JH A") in two adjacent columns --- */
+  const legend = new Map()
+  for (let c = 0; c + 1 < W; c++) {
+    const hits = []
+    for (let r = 0; r < H; r++) {
+      const code = at(r, c), name = at(r, c + 1)
+      if (/^[A-Za-z]{1,2}\d?$/.test(code) && name.length > 2 && !/^[A-Za-z]{1,2}\d?$/.test(name)) hits.push([code, name])
+      else if (code || name) hits.length = hits.length   // gaps are fine
+    }
+    if (hits.length >= 3) hits.forEach(([code, name]) => { if (!legend.has(norm(code))) legend.set(norm(code), name) })
+  }
+  const resolve = v => legend.get(norm(v)) ?? v
+
+  /* --- fixtures: a row carrying a bare "vs" between two teams --- */
+  const poolAt = row => {
+    const above = matrices.filter(m => m.row < row).sort((x, y) => y.row - x.row)[0]
+    return above?.poolName || ''
+  }
+  const fixtures = []
+  for (let r = 0; r < H; r++) {
+    const row = grid[r] ?? []
+    const label = row.find(x => String(x).trim()) ?? ''
+    const timeCell = row.find(x => isClock(x))
+    // A row can carry more than one game -- two courts side by side.
+    const vsCols = []
+    row.forEach((x, i) => { if (/^vs\.?$/i.test(String(x).trim())) vsCols.push(i) })
+    if (vsCols.length) {
+      vsCols.forEach((vs, n) => {
+        const left = n ? vsCols[n - 1] + 1 : 0
+        const right = n + 1 < vsCols.length ? vsCols[n + 1] - 1 : W
+        let a = '', b = ''
+        for (let k = vs - 1; k >= left && !a; k--) { const v = at(r, k); if (v && !isClock(v)) a = v }
+        for (let k = vs + 1; k <= right && k < W && !b; k++) { const v = at(r, k); if (v && !isClock(v)) b = v }
+        if (a && b) fixtures.push({ label: n ? '' : String(label).trim(), t: timeCell || '',
+                                    a: resolve(a), b: resolve(b), pool: poolAt(r) })
+      })
+      continue
+    }
+    // "X-over A1 vs B2" -- a real slot whose entrants the pools decide.
+    if (timeCell && /\bvs\b/i.test(String(label))) {
+      const [as, bs] = String(label).split(/\s+vs\.?\s+/i)
+      fixtures.push({ label: String(label).trim(), t: timeCell, a: '', b: '', as, bs, pool: poolAt(r) })
+    }
+  }
+
+  /* --- a drawn bracket: label | time | "Court n", entrants above and below --- */
+  const games = []
+  for (let r = 0; r < H; r++) for (let c = 0; c + 2 < W; c++) {
+    if (!at(r, c) || !isClock(at(r, c + 1)) || !/^court/i.test(at(r, c + 2))) continue
+    games.push({ label: at(r, c), t: at(r, c + 1), court: at(r, c + 2).replace(/^court\s*/i, ''), row: r, col: c })
+  }
+  const isLabel = (r, c) => games.some(g => g.row === r && g.col === c)
+  const entrant = (g, dir) => {
+    for (let k = 1; k <= 8; k++) {
+      const r = g.row + dir * k
+      if (r < 0 || r >= H) break
+      const v = at(r, g.col)
+      if (!v) continue
+      return isLabel(r, g.col) ? '' : v
+    }
+    return ''
+  }
+  const RE_PLACE = /champion|(?:first|second|third|fourth|fifth|fith|sixth|1st|2nd|3rd|4th|5th|6th)\s*place/i
+  const placeNear = g => {
+    for (let r = Math.max(0, g.row - 1); r <= g.row + 3; r++)
+      for (let c = g.col + 1; c < Math.min(W, g.col + 14); c++)
+        if (RE_PLACE.test(at(r, c))) return at(r, c)
+    return ''
+  }
+
+  if (!fixtures.length && !games.length && !pairs.length) return null
+
+  /* --- assemble --- */
+  const mk = (o) => ({ n: null, day: '', t: '', c: '', pool: '', round: '', a: '', b: '', r: null, w: null, ...o })
+  const courtOf = new Map(matrices.map(m => [norm(m.poolName), m.court]))
+  /** A score written the other way round has its pairs swapped, not its sides. */
+  const flip = t => t.replace(/(\d{1,3})(\s*[-–—]\s*)(\d{1,3})/g, (_, x, d, y) => y + d + x)
+  const withScore = f => {
+    const found = f.a && f.b ? scores.get(key(f.a, f.b)) : null
+    const r = found ? (norm(found.a) === norm(f.a) ? found.text : flip(found.text)) : null
+    return mk({ ...f, n: f.label || null, t: fmtTime(f.t),
+                c: f.court || courtOf.get(norm(f.pool)) || '', r,
+                w: r ? (inferWinner(r, f.a, f.b) ?? crosstabWinner(r)) : null,
+                byPosition: true })
+  }
+
+  const out = { pools: [], groups: [], roster: [], pairs: [], places: null, placesNote: '', unread: [] }
+
+  // Every pairing the matrix defines, with its score if one is in. A 7-team
+  // pool's matrix has 21 of these while only 15 games get played, so these
+  // are a lookup table, not a schedule -- buildModel promotes them to games
+  // only for a division whose tabs carry no fixture list at all.
+  out.pairs = pairs.map(pr => ({ ...pr, ...(scores.get(key(pr.a, pr.b)) ?? {}) }))
+
+  const list = fixtures.map(withScore)
+  if (list.length) {
+    const byPool = new Map()
+    pools.forEach(p => byPool.set(norm(p.name), { name: p.name, note: '', ms: [] }))
+    for (const f of list) {
+      const k = norm(f.pool) || 'pool play'
+      if (!byPool.has(k)) byPool.set(k, { name: f.pool || 'Pool play', note: '', ms: [] })
+      byPool.get(k).ms.push(f)
+    }
+    out.pools = [...byPool.values()].filter(p => p.ms.length)
+  }
+  pools.forEach(p => p.teams.forEach(t => out.roster.push(t)))
+
+  if (games.length) {
+    const rounds = new Map()
+    for (const g of games) {
+      const a = entrant(g, -1), b = entrant(g, +1)
+      const known = n => n && !/^(loser|winner)\b/i.test(n) && !/seed$/i.test(n)
+      const m = mk({
+        n: g.label, t: fmtTime(g.t), c: g.court,
+        a: known(a) ? a : '', as: known(a) ? '' : a,
+        b: known(b) ? b : '', bs: known(b) ? '' : b,
+        place: placeNear(g) || undefined,
+      })
+      const r = m.t || 'Bracket'
+      if (!rounds.has(r)) rounds.set(r, [])
+      rounds.get(r).push(m)
+    }
+    const ordered = [...rounds.entries()].sort((x, y) => mins(x[0]) - mins(y[0]))
+    out.groups = [{ title: null, rounds: ordered.map(([t, ms]) => ({ name: t, ms })) }]
+  }
+
+  if (!out.pools.length && !out.groups.length && !out.pairs.length) return null
+  return out
+}
+
+/* --------------------------- the court schedule ------------------------- */
+
+const RE_TIME = /^\d{1,2}:\d{2}\s*(am|pm)?$/i
+
+function parseSchedule(grid) {
+  const days = []
+  let day = null, block = null
+  for (const row of grid) {
+    const n = filled(row)
+    if (n === 0) { block = null; continue }
+    if (n === 1) { day = { label: row.find(c => c !== ''), blocks: [] }; days.push(day); block = null; continue }
+    const times = row.slice(1).map(c => c.trim())
+    if (times.filter(t => RE_TIME.test(t)).length >= 2) {
+      block = { times, rows: [] }
+      if (!day) { day = { label: '', blocks: [] }; days.push(day) }
+      day.blocks.push(block)
+      continue
+    }
+    if (block) block.rows.push({ court: (row[0] ?? '').trim(), cells: row.slice(1).map(c => c.trim() || null) })
+  }
+  return days.filter(d => d.blocks.length)
+}
+
+/* ======================= 3. the model the page renders =================== */
+
+let sheets = []   /* config, one per Google Sheet tab */
+let views  = []   /* parallel: { status, grid, error, fetchedAt, parsed } */
+let model  = { divisions: [], schedule: [], all: [], days: [] }
+let sel = null    /* { div, team } */
+let tab = 'overview'
+let schedDay = 0
+let timer = null
+let draft = null   /* unsaved edits in the sheet-list box, kept across renders */
+
+const DIVBY = () => Object.fromEntries(model.divisions.map(d => [d.id, d]))
+
+function buildModel() {
+  // Tabs are grouped by the name they were given, so the pool tab and the
+  // bracket tab of one workbook come out as a single division.
+  const byDiv = new Map()
+  const schedule = []
+  views.forEach((v, i) => {
+    const s = sheets[i]
+    if (!v.parsed) return
+    if (s.role === 'schedule') { schedule.push(...v.parsed); return }
+    if (s.role === 'raw') return
+    if (!byDiv.has(s.div)) byDiv.set(s.div, {
+      id: s.div, tab: s.name || `Sheet ${i + 1}`, name: s.name || `Sheet ${i + 1}`,
+      pools: [], groups: [], roster: [], pairs: [], places: null, placesNote: '',
+    })
+    const d = byDiv.get(s.div)
+    d.pools.push(...v.parsed.pools)
+    d.groups.push(...v.parsed.groups)
+    d.roster.push(...v.parsed.roster)
+    d.pairs.push(...(v.parsed.pairs ?? []))
+    if (v.parsed.places && !d.places) { d.places = v.parsed.places; d.placesNote = v.parsed.placesNote }
+  })
+  const divisions = [...byDiv.values()]
+  divisions.forEach(d => { foldPools(d); applyPairs(d); d.teams = teamsOf(d) })
+
+  const all = []
+  divisions.forEach(dv => {
+    dv.pools.forEach(p => p.ms.forEach(m => all.push({ ...m, div: dv.id, stage: p.name, kind: 'pool' })))
+    dv.groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(m =>
+      all.push({ ...m, div: dv.id, stage: g.title ? `${g.title} · ${r.name}` : r.name, kind: 'bracket' }))))
+  })
+
+  // Days in the order the sheets first mention them.
+  const days = []
+  for (const m of all) if (m.day && !days.includes(m.day)) days.push(m.day)
+
+  all.sort((x, y) => (days.indexOf(x.day) - days.indexOf(y.day)) || (mins(x.t) - mins(y.t)))
+  markEnds(all)
+  model = { divisions, schedule, all, days }
+  if (!model.schedule[schedDay]) schedDay = 0
+}
+
+const RE_CLOCK = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i
+/**
+ * Two tabs of one division often describe the same game from different
+ * sides: the schedule tab gives it a time and a court, the pool tab's score
+ * matrix gives it a result. Fold those into one row rather than listing the
+ * fixture twice.
+ */
+function foldPools(d) {
+  const seen = new Map()
+  for (const p of d.pools) {
+    p.ms = p.ms.filter(m => {
+      if (!m.a || !m.b) return true
+      const k = [norm(m.a), norm(m.b)].sort().join('||')
+      const first = seen.get(k)
+      if (!first) { seen.set(k, m); return true }
+      if (!first.r && m.r) { first.r = m.r; first.w = m.w; first.byPosition = m.byPosition }
+      if (!first.t && m.t) { first.t = m.t; first.n = first.n || m.n; first.c = first.c || m.c }
+      return false
+    })
+  }
+  d.pools = d.pools.filter(p => p.ms.length)
+}
+
+const pairKey = (a, b) => [norm(a), norm(b)].sort().join('||')
+const flipScore = t => String(t).replace(/(\d{1,3})(\s*[-–—]\s*)(\d{1,3})/g, (_, x, d, y) => y + d + x)
+
+/**
+ * The score matrix lives on one tab and the fixture list often on another, so
+ * results are matched to games here, across the whole division. A division
+ * with no fixture list anywhere falls back to the matrix's own pairings.
+ */
+function applyPairs(d) {
+  const byPair = new Map()
+  for (const pr of d.pairs) if (pr.text) byPair.set(pairKey(pr.a, pr.b), pr)
+
+  const attach = m => {
+    if (m.r || !m.a || !m.b) return
+    const hit = byPair.get(pairKey(m.a, m.b))
+    if (!hit) return
+    m.r = norm(hit.a) === norm(m.a) ? hit.text : flipScore(hit.text)
+    m.byPosition = true
+    m.w = inferWinner(m.r, m.a, m.b) ?? crosstabWinner(m.r)
+  }
+  d.pools.forEach(p => p.ms.forEach(attach))
+  d.groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(attach)))
+
+  if (!d.pools.some(p => p.ms.length) && d.pairs.length) {
+    const byPool = new Map()
+    for (const pr of d.pairs) {
+      const k = norm(pr.pool) || 'pool play'
+      if (!byPool.has(k)) byPool.set(k, { name: pr.pool || 'Pool play', note: '', ms: [] })
+      const r = pr.text ?? null
+      byPool.get(k).ms.push({ n: null, day: '', t: '', c: pr.court || '', pool: pr.pool, round: '',
+        a: pr.a, b: pr.b, r, byPosition: true,
+        w: r ? (inferWinner(r, pr.a, pr.b) ?? crosstabWinner(r)) : null })
+    }
+    d.pools = [...byPool.values()]
+  }
+  // The schedule decides the order, not the order tabs happened to be read in.
+  d.pools.forEach(p => p.ms.sort((x, y) => mins(x.t) - mins(y.t)))
+}
+
+const mins = t => {
+  const m = RE_CLOCK.exec(String(t || '').trim())
+  if (!m) return 1e6                       // no time -> sorts last
+  let h = +m[1]
+  if (m[3]) { h %= 12; if (/pm/i.test(m[3])) h += 12 }
+  return h * 60 + +m[2]
+}
+/** 24-hour sheet times read better on a wall of scores as 1:00 PM. */
+function fmtTime(t) {
+  const m = RE_CLOCK.exec(String(t || '').trim())
+  if (!m) return String(t || '')
+  if (m[3]) return `${+m[1]}:${m[2]} ${m[3].toUpperCase()}`
+  const h = +m[1]
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+/* ------------------------------ live clock ------------------------------ */
+
+function dateFor(day) {
+  const iso = EVENT.dayDates?.[day]
+  if (iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d) }
+  const parsed = Date.parse(day)                     // a Date column already gives a real date
+  return Number.isNaN(parsed) ? null : new Date(parsed)
+}
+function startOf(m) {
+  const base = dateFor(m.day)
+  if (!base || mins(m.t) === 1e6) return null
+  const d = new Date(base)
+  d.setHours(Math.floor(mins(m.t) / 60), mins(m.t) % 60, 0, 0)
+  return d
+}
+const SLOT = () => EVENT.slotMinutes || 60
+
+/**
+ * A game is "on now" until the next game starts on the same court -- capped
+ * at slotMinutes so the last game of the day doesn't stay lit forever. Going
+ * by the slot alone lights up two rounds at once whenever games are set
+ * closer together than the slot is long.
+ */
+function markEnds(all) {
+  const byCourt = new Map()
+  for (const m of all) {
+    const k = `${m.day}||${m.c}`
+    if (!byCourt.has(k)) byCourt.set(k, [])
+    byCourt.get(k).push(m)
+  }
+  for (const list of byCourt.values()) {
+    list.sort((x, y) => mins(x.t) - mins(y.t))
+    list.forEach((m, i) => {
+      const start = mins(m.t)
+      const next = list[i + 1] ? mins(list[i + 1].t) : 1e6
+      m.endMins = Math.min(next, start + SLOT())
+    })
+  }
+}
+
+function isNow(m) {
+  const s = startOf(m)
+  if (!s) return false
+  const now = Date.now()
+  const end = s.getTime() + ((m.endMins ?? mins(m.t) + SLOT()) - mins(m.t)) * 60000
+  return now >= s.getTime() && now < end
+}
+const todaysDay = () => {
+  const t = new Date(); t.setHours(0, 0, 0, 0)
+  return model.days.find(d => { const x = dateFor(d); return x && x.getTime() === t.getTime() }) || null
+}
+
+/* ------------------------------- fragments ------------------------------ */
+
+const inMatch = m => sel && m.div === sel.div && (m.a === sel.team || m.b === sel.team)
+const ORD = n => n + (['th','st','nd','rd'][(n % 100 - n % 10 !== 10) * (n % 10 < 4) * (n % 10)] || 'th')
+const teamBtn = (name, div) =>
+  `<span class="tname" data-team="${esc(div)}::${esc(name)}" role="button" tabindex="0">${esc(name)}</span>`
+
+function sideHTML(m, side) {
+  const name = side === 'a' ? m.a : m.b
+  const src  = side === 'a' ? m.as : m.bs
+  const won  = m.w === side
+  const cls  = 'side' + (won ? ' won' : '') + (name ? '' : ' tbd')
+  return `<div class="${cls}">${name && src ? `<span class="chip src">${esc(src)}</span>` : ''}`
+    + `<span class="nm">${name ? teamBtn(name, m.div) : esc(src || 'TBD')}</span>`
+    + `${won ? '<span class="chip won">Won</span>' : ''}</div>`
+}
+
+function matchCard(m, showDiv) {
+  const D = DIVBY()
+  const chips = [
+    m.c ? `<span class="chip court">Ct ${esc(m.c)}</span>` : '',
+    showDiv && D[m.div] ? `<span class="chip">${esc(D[m.div].tab)}</span>` : '',
+    m.place ? `<span class="chip place">${esc(m.place)}</span>` : '',
+    isNow(m) ? '<span class="chip live">On now</span>' : '',
+  ].join('')
+  return `<article class="m${inMatch(m) ? ' hit' : ''}">
+    <div class="m-top">${m.n ? `<span class="m-no">${/^\d+$/.test(m.n) ? '#' : ''}${esc(m.n)}</span>` : ''}<span class="m-t">${esc(m.t || '—')}</span>${chips}</div>
+    ${sideHTML(m, 'a')}${sideHTML(m, 'b')}
+    <div class="m-res${m.r ? '' : ' pending'}">${m.r ? esc(m.r) : 'Awaiting result'}</div>
+  </article>`
+}
+
+/** Win/loss worked out from the results the sheet has recorded so far. */
+function poolStandings(pool) {
+  const t = new Map()
+  const get = n => {
+    if (!t.has(n)) t.set(n, { team: n, w: 0, l: 0, sw: 0, sl: 0, pf: 0, pa: 0, played: 0 })
+    return t.get(n)
+  }
+  for (const m of pool.ms) {
+    if (!m.a || !m.b || !m.r) continue
+    const A = get(m.a), B = get(m.b)
+    A.played++; B.played++
+    if (m.w === 'a') { A.w++; B.l++ } else if (m.w === 'b') { B.w++; A.l++ }
+    const s = setTally(m.r, m.a, m.b, m.byPosition)
+    if (s.ok) {
+      A.sw += s.aSets; A.sl += s.bSets; B.sw += s.bSets; B.sl += s.aSets
+      A.pf += s.aPts;  A.pa += s.bPts;  B.pf += s.bPts;  B.pa += s.aPts
+    }
+  }
+  return [...t.values()].sort((x, y) =>
+    (y.w - x.w) || ((y.sw - y.sl) - (x.sw - x.sl)) || ((y.pf - y.pa) - (x.pf - x.pa)) || x.team.localeCompare(y.team))
+}
+
+function poolBlock(dv, p) {
+  // A round-robin grid carries no times or courts; empty columns just push
+  // the matchup off to the right.
+  const hasTime = p.ms.some(m => m.t || m.n)
+  const hasCourt = p.ms.some(m => m.c)
+  const rows = p.ms.map(m => {
+    const mm = { ...m, div: dv.id }
+    const a = m.a ? `<span class="${m.w === 'a' ? 'w' : ''}">${teamBtn(m.a, dv.id)}</span>` : esc(m.as || 'TBD')
+    const b = m.b ? `<span class="${m.w === 'b' ? 'w' : ''}">${teamBtn(m.b, dv.id)}</span>` : esc(m.bs || 'TBD')
+    return `<tr class="${inMatch(mm) ? 'hit' : ''}">
+      ${hasTime ? `<td class="t">${m.n ? `<span class="lbl">${(/^\d+$/.test(m.n) ? '#' : '') + esc(m.n)}</span>` : ''}${esc(m.t || '—')}${isNow(mm) ? ' <span class="chip live">Now</span>' : ''}</td>` : ''}
+      ${hasCourt ? `<td class="t">${m.c ? 'Ct ' + esc(m.c) : ''}</td>` : ''}
+      <td class="team">${a} <span class="vs">VS</span> ${b}</td>
+      <td class="res">${m.r ? esc(m.r) + (m.w === 'split' ? ' <span class="chip">Split</span>' : '')
+                            : '<span style="color:var(--ink-3)">—</span>'}</td>
+    </tr>`
+  }).join('')
+
+  const st = poolStandings(p).filter(r => r.played)
+  const table = st.length ? `<div class="tw" style="margin-top:12px"><table>
+      <thead><tr><th>Standing</th><th style="width:58px">W–L</th><th style="width:66px">Sets</th><th style="width:62px">Diff</th></tr></thead>
+      <tbody>${st.map(r => `<tr class="${sel && sel.div === dv.id && sel.team === r.team ? 'hit' : ''}">
+        <td class="team">${teamBtn(r.team, dv.id)}</td>
+        <td class="n">${r.w}–${r.l}</td>
+        <td class="n">${r.sw}–${r.sl}</td>
+        <td class="n">${r.pf - r.pa > 0 ? '+' : ''}${r.pf - r.pa}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <p class="sec-note" style="margin:6px 0 0">Worked out from the results recorded so far, not from a standings column.</p>` : ''
+
+  return `<div>
+    <div class="sec-head"><h3 class="h-sec">${esc(p.name)}</h3>
+      <span class="sec-note">${p.ms.filter(m => m.r).length} of ${p.ms.length} played</span></div>
+    <div class="tw"><table><thead><tr>
+      ${hasTime ? '<th style="width:96px">Time</th>' : ''}
+      ${hasCourt ? '<th style="width:70px">Court</th>' : ''}
+      <th>Match</th><th style="width:32%">Result</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>
+    ${table}
+  </div>`
+}
+
+const bracketHTML = dv => dv.groups.map(g => `
+  <div style="margin-top:18px">
+    ${g.title ? `<div class="sec-head"><h3 class="h-sec">${esc(g.title)}</h3></div>` : ''}
+    <div class="rounds">${g.rounds.map(r => `
+      <div class="round"><div class="round-h">${esc(r.name)}</div>
+      ${r.ms.map(m => matchCard({ ...m, div: dv.id })).join('')}</div>`).join('')}
+    </div>
+  </div>`).join('')
+
+/** Final placings: the sheet's own list when it has one, else the last
+ *  decided bracket game. */
+function podium(dv) {
+  if (dv.places?.length) return { places: dv.places, note: dv.placesNote || 'From the sheet.' }
+  const last = [...dv.groups].reverse().flatMap(g => [...g.rounds].reverse())
+    .flatMap(r => [...r.ms].reverse()).find(m => m.r && (m.w === 'a' || m.w === 'b'))
+  if (!last) return null
+  const win = last.w === 'a' ? last.a : last.b
+  const lose = last.w === 'a' ? last.b : last.a
+  return { places: [win, lose].filter(Boolean), note: 'From the last decided bracket game.' }
+}
+
+/* ================================ panels ================================ */
+
+function pOverview() {
+  const today = todaysDay()
+  const onNow = model.all.filter(isNow)
+  const next  = today ? model.all.filter(m => m.day === today && startOf(m) && startOf(m) > new Date()).slice(0, 6) : []
+  const recent = model.all.filter(m => m.r).slice(-6).reverse()
+
+  const live = (onNow.length || next.length) ? `<section>
+    <div class="sec-head"><span class="eyebrow">Live${today ? ' · ' + esc(today) : ''}</span></div>
+    ${onNow.length ? `<h3 class="h-sec" style="margin-bottom:10px">On the courts now</h3>
+      <div class="grid g3">${onNow.map(m => matchCard(m, true)).join('')}</div>` : ''}
+    ${next.length ? `<h3 class="h-sec" style="margin:${onNow.length ? '22px' : '0'} 0 10px">Up next</h3>
+      <div class="grid g3">${next.map(m => matchCard(m, true)).join('')}</div>` : ''}
+  </section>` : ''
+
+  const results = recent.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Latest results</h2>
+      <span class="sec-note">The most recent games the sheets have scores for</span></div>
+    <div class="grid g3">${recent.map(m => matchCard(m, true)).join('')}</div>
+  </section>` : ''
+
+  const pods = model.divisions.map(d => ({ d, p: podium(d) })).filter(x => x.p)
+  const champs = pods.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Standings</h2><span class="sec-note">Where each division has got to</span></div>
+    <div class="grid g3">${pods.map(({ d, p }) => `<div class="champ">
+      <div class="top">${esc(d.name)}</div>
+      <div class="body">
+        <div class="win"><span class="n">1ST</span><h3>${teamBtn(p.places[0], d.id)}</h3></div>
+        ${p.places.length > 1 ? `<ol class="seedlist" style="margin-top:9px;padding-top:9px;border-top:1px dotted var(--line)">
+          ${p.places.slice(1, 4).map(t => `<li>${teamBtn(t, d.id)}</li>`).join('')}</ol>` : ''}
+      </div></div>`).join('')}</div>
+  </section>` : ''
+
+  const cards = model.divisions.map(d => {
+    const ms = model.all.filter(m => m.div === d.id)
+    return `<button class="card" data-goto="${esc(d.id)}" style="text-align:left;cursor:pointer;font:inherit;color:inherit">
+      <div class="cnt">${d.teams.length} teams · ${ms.filter(m => m.r).length} of ${ms.length} games in</div>
+      <h3>${esc(d.name)}</h3>
+    </button>`
+  }).join('')
+
+  const played = model.all.filter(m => m.r).length
+  return `
+  <section>
+    <span class="eyebrow">Live from the tournament sheets</span>
+    <h1 class="h-div" style="font-size:clamp(34px,5.6vw,60px)">${esc(EVENT.name)}</h1>
+    <p class="lede">${model.divisions.length} divisions · ${model.divisions.reduce((n, d) => n + d.teams.length, 0)} teams ·
+      ${played} of ${model.all.length} games recorded. Every Refresh re-reads the Google Sheets, so
+      this follows the scorers through the day. Pick your team in the bar above and the page follows it everywhere.</p>
+  </section>
+  ${live}${champs}
+  <section>
+    <div class="sec-head"><h2 class="h-sec">Divisions</h2><span class="sec-note">Tap for pools, results and bracket</span></div>
+    <div class="grid g3">${cards}</div>
+  </section>
+  ${results}`
+}
+
+function pDivision(dv) {
+  const ms = model.all.filter(m => m.div === dv.id)
+  const p = podium(dv)
+  const nothing = !dv.pools.length && !dv.groups.length
+  return `
+  <section>
+    <span class="eyebrow">${ms.filter(m => m.r).length} of ${ms.length} games played</span>
+    <h1 class="h-div">${esc(dv.name)}</h1>
+  </section>
+  ${nothing ? `<section><div class="callout"><strong>Nothing recognisable in this sheet yet.</strong>
+    No pool or bracket tables were found in it. The Data tab shows exactly what came back from Google.</div></section>` : ''}
+  ${p && dv.places?.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Standings</h2><span class="sec-note">${esc(p.note)}</span></div>
+    <div class="card" style="max-width:440px"><ol class="seedlist">${p.places.map(t => `<li>${teamBtn(t, dv.id)}</li>`).join('')}</ol></div>
+  </section>` : ''}
+  ${dv.teams.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Teams</h2><span class="sec-note">${dv.teams.length} · tap a name to follow that team</span></div>
+    <ul class="roster" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px">
+      ${dv.teams.map(t => `<li class="${sel && sel.div === dv.id && sel.team === t ? 'hit' : ''}"
+        data-team="${esc(dv.id)}::${esc(t)}" role="button" tabindex="0">${esc(t)}</li>`).join('')}
+    </ul>
+  </section>` : ''}
+  ${dv.pools.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Pool play</h2></div>
+    <div class="grid g2" style="align-items:start">${dv.pools.map(p2 => poolBlock(dv, p2)).join('')}</div>
+  </section>` : ''}
+  ${dv.groups.length ? `<section>
+    <div class="sec-head"><h2 class="h-sec">Bracket</h2>
+      <span class="sec-note"><span class="chip src">W3</span> winner of game 3 · <span class="chip src">L3</span> loser of game 3</span></div>
+    ${bracketHTML(dv)}
+  </section>` : ''}`
+}
+
+function pSchedule() {
+  const days = model.schedule
+  if (!days.length) return `<div class="empty-state"><h3>No court schedule</h3>
+    <p style="max-width:44ch;margin:8px auto 0">Add a sheet with the role <code>schedule</code> — times across the top,
+    courts down the side — and the master grid appears here.</p></div>`
+  const day = days[schedDay] || days[0]
+  return `
+  <section>
+    <span class="eyebrow">Master court grid</span>
+    <h1 class="h-div">Court Schedule</h1>
+    ${days.length > 1 ? `<div class="toggle" style="margin-top:14px">${days.map((d, i) =>
+      `<button type="button" data-day-btn="${i}" aria-pressed="${i === schedDay}">${esc(d.label || 'Day ' + (i + 1))}</button>`).join('')}</div>` : ''}
+  </section>
+  <section>${day.blocks.map(bl => `<div class="tw" style="margin-bottom:14px"><table class="sched">
+    <thead><tr><th style="width:74px">Court</th>${bl.times.map(t => `<th>${esc(t)}</th>`).join('')}</tr></thead>
+    <tbody>${bl.rows.map(r => `<tr><th class="c">${esc(r.court)}</th>${r.cells.map(cell => {
+      if (!cell) return '<td class="slot"><span class="empty">—</span></td>'
+      const hit = sel && norm(cell).includes(norm(sel.team))
+      return `<td class="slot"><span class="b${hit ? ' hit' : ''}">${esc(cell)}</span></td>`
+    }).join('')}</tr>`).join('')}</tbody>
+  </table></div>`).join('')}</section>`
+}
+
+function pTeams() {
+  const total = model.divisions.reduce((n, d) => n + d.teams.length, 0)
+  if (!total) return `<div class="empty-state"><h3>No teams yet</h3></div>`
+  return `
+  <section>
+    <span class="eyebrow">${total} entries across ${model.divisions.length} divisions</span>
+    <h1 class="h-div">Teams</h1>
+    <p class="lede">Read out of the sheets themselves — whoever appears in a pool or bracket game is listed.
+      Tap any name to follow that team.</p>
+  </section>
+  <section><div class="grid g3">${model.divisions.filter(d => d.teams.length).map(d => `
+    <div class="card">
+      <div class="cnt">${d.teams.length} teams</div><h3>${esc(d.name)}</h3>
+      <ul class="roster">${d.teams.map(t => `<li class="${sel && sel.div === d.id && sel.team === t ? 'hit' : ''}"
+        data-team="${esc(d.id)}::${esc(t)}" role="button" tabindex="0">${esc(t)}</li>`).join('')}</ul>
+    </div>`).join('')}</div></section>`
+}
+
+function pMyTeam() {
+  if (!sel) return `<div class="empty-state">
+    <h3>No team selected</h3>
+    <p style="max-width:44ch;margin:8px auto 0">Choose a team in the bar above — or tap any team name on the page —
+      and every match they play lands here in order, with courts, times and results.</p></div>`
+  const dv = DIVBY()[sel.div]
+  if (!dv) return `<div class="empty-state"><h3>${esc(sel.team)}</h3>
+    <p style="margin-top:8px">That division is no longer in the sheets.</p></div>`
+  const ms = model.all.filter(inMatch)
+  const days = model.days.filter(d => ms.some(m => m.day === d))
+  const groups = days.length ? days.map(d => [d, ms.filter(m => m.day === d)]) : [['', ms]]
+  const p = podium(dv)
+  const place = p ? p.places.indexOf(sel.team) : -1
+
+  return `
+  <section>
+    <span class="eyebrow">${esc(dv.name)} · ${ms.length} games · ${ms.filter(m => m.r).length} played</span>
+    <h1 class="h-div">${esc(sel.team)}</h1>
+    ${place >= 0 ? `<p style="margin:10px 0 0"><span class="chip place" style="font-size:12px;padding:5px 10px">${esc(ORD(place + 1))}</span></p>` : ''}
+  </section>
+  <section class="tl">${groups.map(([day, list]) => `
+    ${day ? `<div class="tl-day"><span class="chip day">${esc(day)}</span><span class="r"></span></div>` : ''}
+    ${list.map(m => {
+      const home = m.a === sel.team
+      const opp = home ? m.b : m.a
+      const oppSrc = home ? m.bs : m.as
+      const won = m.w && ((home && m.w === 'a') || (!home && m.w === 'b'))
+      const lost = m.w && m.w !== 'split' && !won
+      return `<div class="mrow${isNow(m) ? ' now' : ''}">
+        <div class="when">${esc(m.t || '—')}${m.c ? `<small>Ct ${esc(m.c)}</small>` : ''}</div>
+        <div>
+          <div class="opp"><span class="lbl">${home ? 'home' : 'away'} vs</span>
+            ${opp ? teamBtn(opp, m.div) : `<em style="color:var(--ink-3)">${esc(oppSrc || 'TBD')}</em>`}</div>
+          <div class="meta">
+            <span class="chip">${esc(m.stage)}</span>
+            ${m.n ? `<span class="chip">Game #${esc(m.n)}</span>` : ''}
+            ${isNow(m) ? '<span class="chip live">On now</span>' : ''}
+            ${won ? '<span class="chip won">Won</span>' : ''}
+            ${lost ? '<span class="chip lost">Lost</span>' : ''}
+            ${m.w === 'split' ? '<span class="chip">Sets split</span>' : ''}
+          </div>
+          ${m.r ? `<div class="mono" style="font-size:12.5px;color:var(--ink-2);margin-top:5px">${esc(m.r)}</div>` : ''}
+        </div>
+      </div>`
+    }).join('')}`).join('')}
+  </section>`
+}
+
+/* The receipt: what each sheet returned and what was made of it. */
+function pData() {
+  const rawTable = grid => !grid?.length ? '<p class="sec-note">Nothing came back.</p>'
+    : `<div class="tw raw"><table><tbody>${grid.slice(0, 200).map(r =>
+        `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+
+  const rows = sheets.map((s, i) => {
+    const v = views[i] || {}
+    const p = v.parsed
+    let summary = '—'
+    if (s.role === 'schedule' && p) {
+      summary = `${p.length} day${p.length === 1 ? '' : 's'} of court grid`
+    } else if (p) {
+      const rounds = p.groups.reduce((n, g) => n + g.rounds.length, 0)
+      summary = [
+        p.pools.length ? `${p.pools.length} pool${p.pools.length === 1 ? '' : 's'}` : '',
+        rounds ? `${rounds} bracket round${rounds === 1 ? '' : 's'}` : '',
+        p.places ? `${p.places.length} placings` : '',
+        p.unread.length ? `${p.unread.length} block${p.unread.length === 1 ? '' : 's'} not shown as games` : '',
+      ].filter(Boolean).join(' · ') || 'nothing recognised'
+    }
+    return `<details class="card" style="margin-bottom:12px">
+      <summary style="cursor:pointer;list-style:revert">
+        <span class="srow" style="border:0;padding:0;display:inline-flex">
+          <span class="nm">${esc(s.name || 'Sheet ' + (i + 1))}</span>
+          <span class="chip">${esc(s.role)}</span>
+          <span class="st ${esc(v.status || '')}">${esc(v.status || 'idle')}</span>
+          <span class="sec-note">${esc(summary)}</span>
+        </span>
+      </summary>
+      <div style="margin-top:12px">
+        ${v.error ? `<div class="callout"><strong>Couldn't read this sheet.</strong> ${esc(v.error)}</div>` : ''}
+        <p class="sec-note"><a href="${esc(s.url)}" target="_blank" rel="noopener">Open in Google Sheets ↗</a>
+          ${v.fetchedAt ? ' · read ' + esc(new Date(v.fetchedAt).toLocaleTimeString()) : ''}</p>
+        ${(p?.unread ?? []).map(b => `<div class="callout plain" style="margin-bottom:10px">
+          <strong>${esc(b.title || 'Untitled block')}</strong> — not shown as games: ${esc(b.why)}
+          ${rawTable(b.rows)}</div>`).join('')}
+        ${rawTable(v.grid)}
+      </div>
+    </details>`
+  }).join('')
+
+  return `
+  <section>
+    <span class="eyebrow">Straight from Google</span>
+    <h1 class="h-div">Data</h1>
+    <p class="lede">Exactly what each sheet returned, and what the page made of it. If a division looks wrong,
+      the answer is here — open the sheet below and compare.</p>
+  </section>
+  <section>${rows || '<p class="sec-note">No sheets configured.</p>'}</section>
+  <section>
+    <div class="sec-head"><h2 class="h-sec">Sheets</h2></div>
+    <div class="setup">
+      <p class="sec-note" style="margin:0 0 10px">One per line: <code>Name | role | link</code>.
+        Role is <code>division</code> (the default), <code>schedule</code> or <code>raw</code>.
+        Saved in this browser; <strong>Use built-in list</strong> goes back to what the file itself defines.</p>
+      <textarea id="links" spellcheck="false"></textarea>
+      <div class="row">
+        <button class="btn go" id="saveBtn" type="button">Save &amp; reload</button>
+        <button class="btn" id="resetBtn" type="button">Use built-in list</button>
+      </div>
+      <p class="sec-note" style="margin-top:10px">Each sheet must be a real Google Sheet shared
+        “Anyone with the link — Viewer”. A sheet with several tabs needs one line per tab, keeping the
+        <code>#gid=…</code> Google puts in the URL when that tab is open.</p>
+    </div>
+  </section>`
+}
+
+/* ================================= shell ================================ */
+
+function tabs() {
+  const t = [{ id: 'myteam', label: 'My Team' }, { id: 'overview', label: 'Overview' }]
+  if (model.schedule.length) t.push({ id: 'schedule', label: 'Court Schedule' })
+  model.divisions.forEach(d => t.push({ id: d.id, label: d.tab || d.name, ct: d.teams.length || null }))
+  if (model.divisions.some(d => d.teams.length)) t.push({ id: 'teams', label: 'Teams' })
+  t.push({ id: 'data', label: 'Data' })
+  return t
+}
+
+/** A division is fed by one or more tabs; the dot reflects the worst of them. */
+function dotFor(id) {
+  const st = sheets.map((s, i) => (s.div === id ? views[i]?.status : null)).filter(Boolean)
+  if (st.includes('error')) return '<span class="dot error"></span>'
+  if (st.includes('loading')) return '<span class="dot loading"></span>'
+  return ''
+}
+
+function renderStamp() {
+  const el = $('#stamp')
+  if (!sheets.length) { el.innerHTML = ''; return }
+  if (views.some(v => v.status === 'loading')) { el.innerHTML = 'Reading sheets…'; return }
+  const times = views.map(v => v.fetchedAt).filter(Boolean)
+  const bad = views.filter(v => v.status === 'error').length
+  el.innerHTML = (times.length ? `Updated <b>${new Date(Math.min(...times)).toLocaleTimeString()}</b>` : '')
+    + (bad ? ` <span class="bad">· ${bad} failed</span>` : '')
+}
+
+function render() {
+  const list = tabs()
+  if (!list.some(t => t.id === tab)) tab = 'overview'
+  $('#rail').innerHTML = list.map(t =>
+    `<button class="tab" role="tab" data-tab="${esc(t.id)}" aria-selected="${tab === t.id}">${esc(t.label)}`
+    + `${t.ct ? `<span class="ct">${t.ct}</span>` : ''}${dotFor(t.id)}</button>`).join('')
+
+  let html
+  if (!sheets.length) html = pData()
+  else if (tab === 'overview') html = pOverview()
+  else if (tab === 'schedule') html = pSchedule()
+  else if (tab === 'teams') html = pTeams()
+  else if (tab === 'myteam') html = pMyTeam()
+  else if (tab === 'data') html = pData()
+  else html = pDivision(DIVBY()[tab])
+
+  $('#panels').innerHTML = `<div class="panel" role="tabpanel">${html}</div>
+    <div class="footer"><span>Read live from the tournament's Google Sheets.</span>
+    <span>${views.filter(v => v.status === 'ok').length} of ${sheets.length} sheets reading cleanly</span></div>`
+
+  if ($('#links')) $('#links').value = draft ?? store.get(STORE_SHEETS) ?? configText()
+  $(`.tab[data-tab="${CSS.escape(tab)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  renderStamp()
+  buildPicker()
+}
+
+const configText = () => sheets.map(s => `${s.name || 'Sheet'} | ${s.role} | ${s.url}`).join('\n')
+
+function buildPicker() {
+  const p = $('#teamPick')
+  const want = sel ? `${sel.div}::${sel.team}` : ''
+  p.innerHTML = '<option value="">All teams</option>'
+  model.divisions.forEach(d => {
+    if (!d.teams.length) return
+    const g = document.createElement('optgroup')
+    g.label = d.name
+    d.teams.forEach(t => {
+      const o = document.createElement('option')
+      o.value = `${d.id}::${t}`; o.textContent = t
+      g.appendChild(o)
+    })
+    p.appendChild(g)
+  })
+  p.value = want
+}
+
+function pick(v, fromPicker) {
+  sel = v ? { div: v.split('::')[0], team: v.split('::').slice(1).join('::') } : null
+  if (sel && !fromPicker) tab = 'myteam'
+  render()
+}
+
+/* ------------------------------- refresh -------------------------------- */
+
+async function refresh() {
+  if (!sheets.length) { render(); return }
+  $('#refreshBtn').disabled = true
+  views.forEach(v => { v.status = 'loading' })
+  render()
+
+  await Promise.all(sheets.map(async (sheet, i) => {
+    const v = views[i]
+    try {
+      const data = await fetchTab(sheet)
+      if (data?.status === 'error') {
+        const e = data.errors?.[0]
+        throw new Error(String(e?.detailed_message ?? e?.message ?? 'Google refused the request.')
+          .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
+      }
+      v.grid = toGrid(data?.table)
+      v.parsed = sheet.role === 'schedule' ? parseSchedule(v.grid)
+               : sheet.role === 'raw' ? null
+               : parseSheet(v.grid, sheet.role === 'pool' || sheet.role === 'bracket' ? sheet.role : null)
+      v.status = 'ok'; v.error = null; v.fetchedAt = Date.now()
+    } catch (err) {
+      v.status = 'error'; v.error = err.message || String(err); v.parsed = null
+    }
+  }))
+
+  buildModel()
+  $('#refreshBtn').disabled = false
+  render()
+}
+
+function setAuto(sec) {
+  clearInterval(timer); timer = null
+  store.set(STORE_AUTO, String(sec))
+  if (sec > 0) timer = setInterval(refresh, sec * 1000)
+}
+
+function applyConfig(next) {
+  sheets = next.map((s, i) => ({
+    ...s,
+    key: `s${i}_${s.id.slice(0, 5)}${s.gid}`,
+    div: 'div_' + ((norm(s.name) || `sheet${i}`).replace(/[^a-z0-9]+/g, '-')),
+  }))
+  views = sheets.map(() => ({ status: 'idle', grid: null, parsed: null, error: null, fetchedAt: null }))
+  sel = null
+  buildModel()
+  render()
+  if (sheets.length) refresh()
+}
+
+/* -------------------------------- events -------------------------------- */
+
+document.addEventListener('click', e => {
+  const t = e.target
+  const tabBtn = t.closest('[data-tab]');     if (tabBtn) { tab = tabBtn.dataset.tab; render(); window.scrollTo(0, 0); return }
+  const goto   = t.closest('[data-goto]');    if (goto)   { tab = goto.dataset.goto;  render(); window.scrollTo(0, 0); return }
+  const dayBtn = t.closest('[data-day-btn]'); if (dayBtn) { schedDay = +dayBtn.dataset.dayBtn; render(); return }
+  const team   = t.closest('[data-team]');    if (team)   { pick(team.dataset.team, false); return }
+  if (t.closest('#saveBtn')) {
+    const next = parseLines($('#links').value)
+    if (!next.length) { alert('No Google Sheets links found.\nEach line needs a link like\nhttps://docs.google.com/spreadsheets/d/…'); return }
+    store.set(STORE_SHEETS, $('#links').value)
+    draft = null
+    applyConfig(next)
+    return
+  }
+  if (t.closest('#resetBtn')) { store.del(STORE_SHEETS); draft = null; applyConfig(loadConfig()); return }
+})
+document.addEventListener('input', e => { if (e.target.id === 'links') draft = e.target.value })
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  const team = e.target.closest?.('[data-team]')
+  if (team) { e.preventDefault(); pick(team.dataset.team, false) }
+})
+$('#teamPick').addEventListener('change', e => pick(e.target.value, true))
+$('#autoPick').addEventListener('change', e => setAuto(Number(e.target.value)))
+$('#refreshBtn').addEventListener('click', refresh)
+$('#printBtn').addEventListener('click', () => window.print())
+$('#themeBtn').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme')
+  const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark')
+})
+// A phone that slept is showing old scores; catch it up on the way back.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && sheets.length && Number($('#autoPick').value) > 0) refresh()
+})
+
+const setBandH = () => document.documentElement.style.setProperty('--bandH', $('.band').offsetHeight + 'px')
+addEventListener('resize', setBandH)
+
+/* --------------------------------- boot --------------------------------- */
+
+$('#mName').textContent = EVENT.name || 'Tournament'
+$('#mYear').textContent = EVENT.year || ''
+$('#mSub').textContent  = EVENT.sub || ''
+document.title = EVENT.name ? `${EVENT.name} · Live` : 'Tournament Live'
+
+const savedAuto = Number(store.get(STORE_AUTO) ?? '0')
+$('#autoPick').value = String(savedAuto)
+setAuto(savedAuto)
+
+applyConfig(loadConfig())
+setBandH()
+// Keep "On now" honest without re-reading Google.
+setInterval(() => { if (tab !== 'data' && model.all.some(m => startOf(m))) render() }, 60000)
+})()
+</script>
+</body>
+</html>

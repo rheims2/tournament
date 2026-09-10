@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tournament Sheets</title>
+<style>
+  :root {
+    --bg: #f2f5f9;
+    --card: #ffffff;
+    --zebra: #f7f9fc;
+    --hover: #eef4ff;
+    --head: #e8edf5;
+    --line: #d3dae6;
+    --text: #10151d;
+    --muted: #5c6879;
+    --accent: #1c5dd8;
+    --ok: #1a8a4a;
+    --bad: #c0392b;
+    --warn: #b7791f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b;
+      --card: #171d26;
+      --zebra: #1c2330;
+      --hover: #24304a;
+      --head: #222b39;
+      --line: #313c4d;
+      --text: #eef2f8;
+      --muted: #9aa7ba;
+      --accent: #6fa2ff;
+      --ok: #4ec27d;
+      --bad: #ff7d6e;
+      --warn: #e5b25d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  button, select, input, textarea { font: inherit; color: inherit; }
+
+  /* ---- top bar ---- */
+  .bar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar h1 { font-size: 17px; margin: 0 auto 0 0; font-weight: 650; letter-spacing: -0.01em; }
+  .stamp { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 9px; padding: 8px 13px; cursor: pointer; font-weight: 550;
+    min-height: 40px;
+  }
+  .btn:hover { background: var(--hover); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn[disabled] { opacity: 0.55; cursor: default; }
+  select.btn { padding-right: 8px; }
+
+  /* ---- sheet tabs ---- */
+  .tabs {
+    position: sticky; top: 61px; z-index: 20;
+    display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 7px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 999px; padding: 8px 14px; cursor: pointer; white-space: nowrap;
+    min-height: 40px;
+  }
+  .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+  .dot.ok { background: var(--ok); }
+  .dot.error { background: var(--bad); }
+  .dot.loading { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  /* ---- panel ---- */
+  main { padding: 12px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .panel-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+  }
+  .panel-head .title { font-weight: 650; margin-right: auto; }
+  .panel-head a { color: var(--accent); font-size: 13px; text-decoration: none; }
+  .panel-head a:hover { text-decoration: underline; }
+  .filter {
+    border: 1px solid var(--line); background: var(--bg); border-radius: 8px;
+    padding: 8px 11px; min-width: 150px; min-height: 40px;
+  }
+
+  /* ---- grid ---- */
+  .scroll { overflow: auto; max-height: calc(100vh - 210px); -webkit-overflow-scrolling: touch; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 15px; }
+  th, td {
+    border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+    padding: 8px 11px; text-align: left; vertical-align: top;
+    white-space: pre-wrap; word-break: break-word; max-width: 380px;
+  }
+  th:last-child, td:last-child { border-right: 0; }
+  thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--head); font-weight: 650; white-space: nowrap;
+  }
+  tbody tr { --row-bg: var(--card); }
+  tbody tr:nth-child(even) { --row-bg: var(--zebra); }
+  tbody tr:hover { --row-bg: var(--hover); }
+  tbody td { background: var(--row-bg); }
+  th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; }
+  thead th:first-child { z-index: 3; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .msg { padding: 22px 14px; color: var(--muted); text-align: center; }
+  .msg.error { color: var(--bad); text-align: left; }
+  .msg code { background: var(--bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  .msg ul { text-align: left; display: inline-block; margin: 8px 0 0; }
+
+  /* ---- setup ---- */
+  .setup { max-width: 720px; margin: 0 auto; }
+  .setup h2 { font-size: 18px; margin: 0 0 6px; }
+  .setup p { color: var(--muted); margin: 0 0 12px; }
+  .setup textarea {
+    width: 100%; min-height: 190px; padding: 11px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--bg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+  }
+  .setup .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<!--
+  ============================================================================
+  TOURNAMENT SHEETS  --  a live, read-only HTML view of Google Sheets you do
+  not own.  Every Refresh pulls the current values straight from Google, so
+  edits the tournament staff make during the day show up here.
+
+  HOW IT WORKS
+    Google's "gviz" endpoint returns a sheet's data as JSON:
+      https://docs.google.com/spreadsheets/d/<FILE_ID>/gviz/tq?tqx=out:json&gid=<TAB_ID>
+    It is loaded with a <script> tag (JSONP), which is the one way a plain
+    HTML file can read Google Sheets from the browser -- the CSV export URL
+    sends no CORS headers, so fetch() against it is blocked.  Nothing here
+    needs a server, an API key, or a Google login.
+
+  REQUIREMENTS FOR EACH SHEET
+    - It must be a real Google Sheet (created in Sheets), not an .xlsx or
+      .numbers file sitting in Drive.  Open it: if the URL starts with
+      /spreadsheets/d/ it is a Google Sheet and will work.  If it opens in a
+      preview window with a Download button, it is an uploaded file and this
+      page cannot read it -- see README-sheets.md for that case.
+    - Its sharing must be "Anyone with the link -- Viewer".  Anything narrower
+      (specific people, or "anyone in <company>") cannot be read anonymously.
+
+  CONFIGURING THE 6 SHEETS
+    Fill in SHEETS below and this page is ready for everyone.  Leave it empty
+    and the page shows a paste-in setup screen instead, storing the list in
+    the browser -- handy for trying links out before hard-coding them.
+  ============================================================================
+-->
+<script>
+const SHEETS = [
+  // Paste the 6 links here, e.g.:
+  // { name: 'Pool Play',   url: 'https://docs.google.com/spreadsheets/d/1AbCdEf.../edit#gid=0' },
+  // { name: 'Standings',   url: 'https://docs.google.com/spreadsheets/d/1GhIjKl.../edit#gid=0' },
+  //
+  // A sheet with several tabs gets one entry per tab -- open the tab in
+  // Google Sheets and copy the URL, the #gid=... at the end names the tab:
+  // { name: 'Brackets - Gold',   url: '...#gid=0' },
+  // { name: 'Brackets - Silver', url: '...#gid=884213' },
+]
+</script>
+
+<div class="bar">
+  <h1>Tournament Sheets</h1>
+  <span class="stamp" id="stamp"></span>
+  <select class="btn" id="auto" title="Refresh on a timer">
+    <option value="0">Auto: off</option>
+    <option value="30">Every 30s</option>
+    <option value="60">Every 1 min</option>
+    <option value="120">Every 2 min</option>
+    <option value="300">Every 5 min</option>
+  </select>
+  <button class="btn" id="edit" title="Change which sheets are shown">Sheets…</button>
+  <button class="btn primary" id="refresh">Refresh</button>
+</div>
+
+<div class="tabs" id="tabs" hidden></div>
+
+<main>
+  <div class="panel" id="panel" hidden>
+    <div class="panel-head">
+      <span class="title" id="panelTitle"></span>
+      <input class="filter" id="filter" type="search" placeholder="Filter rows…" autocomplete="off" />
+      <a id="openIn" target="_blank" rel="noopener">Open in Google Sheets ↗</a>
+    </div>
+    <div class="scroll" id="grid"></div>
+  </div>
+
+  <div class="setup" id="setup" hidden>
+    <h2>Which sheets should this page show?</h2>
+    <p>One per line: <code>Name | link</code>. The name is what the tab is labelled;
+       leave it off and you get “Sheet 1”, “Sheet 2”, and so on.</p>
+    <textarea id="links" spellcheck="false" placeholder="Pool Play | https://docs.google.com/spreadsheets/d/…/edit#gid=0
+Standings | https://docs.google.com/spreadsheets/d/…/edit#gid=0"></textarea>
+    <div class="row">
+      <button class="btn primary" id="save">Save &amp; load</button>
+      <button class="btn" id="cancel">Cancel</button>
+      <button class="btn" id="reset" title="Discard local changes and use the list built into this file">Use built-in list</button>
+    </div>
+    <p class="hint">
+      Each sheet must be a real Google Sheet shared as “Anyone with the link — Viewer”.
+      For a sheet with several tabs, add one line per tab and keep the
+      <code>#gid=…</code> that Google puts in the URL when that tab is open.
+    </p>
+  </div>
+</main>
+
+<script>
+(() => {
+  'use strict'
+
+  const STORE_LINKS = 'tournamentSheets.links.v1'
+  const STORE_AUTO = 'tournamentSheets.auto.v1'
+  const TIMEOUT_MS = 15000
+
+  const $ = (id) => document.getElementById(id)
+  const el = { tabs: $('tabs'), panel: $('panel'), panelTitle: $('panelTitle'), grid: $('grid'),
+               openIn: $('openIn'), filter: $('filter'), setup: $('setup'), links: $('links'),
+               stamp: $('stamp'), auto: $('auto'), refresh: $('refresh') }
+
+  /** Read localStorage without letting a locked-down browser break the page. */
+  const store = {
+    get(key) { try { return localStorage.getItem(key) } catch { return null } },
+    set(key, value) { try { localStorage.setItem(key, value) } catch { /* private mode */ } },
+    del(key) { try { localStorage.removeItem(key) } catch { /* private mode */ } },
+  }
+
+  let sheets = []   // [{ name, id, gid, url }]
+  let views = []    // [{ status, grid, error, fetchedAt, title }] parallel to sheets
+  let active = 0
+  let timer = null
+
+  // -------------------------------------------------------------- config ---
+
+  /** Pull the file id and tab id out of any Google Sheets / Drive URL. */
+  function parseLink(raw) {
+    const text = String(raw).trim()
+    if (!text) return null
+    const id = text.match(/\/(?:spreadsheets|file)\/d\/([A-Za-z0-9_-]{20,})/)?.[1]
+            ?? text.match(/[?&]id=([A-Za-z0-9_-]{20,})/)?.[1]
+            ?? (/^[A-Za-z0-9_-]{20,}$/.test(text) ? text : null)
+    if (!id) return null
+    return { id, gid: text.match(/[#?&]gid=(\d+)/)?.[1] ?? '0' }
+  }
+
+  /** Parse the "Name | link" lines from the setup box. */
+  function parseLines(text) {
+    return text.split('\n').map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) return null
+      const cut = trimmed.lastIndexOf('|')
+      const name = cut > 0 ? trimmed.slice(0, cut).trim() : ''
+      const parsed = parseLink(cut > 0 ? trimmed.slice(cut + 1) : trimmed)
+      return parsed && { name, id: parsed.id, gid: parsed.gid, url: sheetUrl(parsed.id, parsed.gid) }
+    }).filter(Boolean)
+  }
+
+  const sheetUrl = (id, gid) => `https://docs.google.com/spreadsheets/d/${id}/edit#gid=${gid}`
+
+  /** The saved list wins over the one baked into the file, so a mid-day fix
+   *  does not need the file redeployed. */
+  function loadConfig() {
+    const saved = store.get(STORE_LINKS)
+    if (saved) {
+      const parsed = parseLines(saved)
+      if (parsed.length) return parsed
+    }
+    return (window.SHEETS || []).map((entry) => {
+      const parsed = parseLink(entry.url || entry.id || '')
+      return parsed && { name: entry.name || '', id: parsed.id,
+                         gid: entry.gid != null ? String(entry.gid) : parsed.gid,
+                         url: sheetUrl(parsed.id, entry.gid != null ? String(entry.gid) : parsed.gid) }
+    }).filter(Boolean)
+  }
+
+  // --------------------------------------------------------------- fetch ---
+
+  let callbackSeq = 0
+
+  /**
+   * Ask Google for one tab's contents. A <script> tag is used rather than
+   * fetch() because the Sheets endpoints send no CORS headers; JSONP is not
+   * subject to them. The cache-buster keeps a refresh from replaying a
+   * response the browser already has.
+   */
+  function fetchTab(sheet) {
+    return new Promise((resolve, reject) => {
+      const cb = `__gviz_cb_${Date.now().toString(36)}_${callbackSeq++}`
+      const script = document.createElement('script')
+      let settled = false
+
+      const finish = (fn, arg) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+        delete window[cb]
+        script.remove()
+        fn(arg)
+      }
+      const timeoutId = setTimeout(
+        () => finish(reject, new Error('No answer from Google within 15 seconds.')),
+        TIMEOUT_MS,
+      )
+
+      window[cb] = (data) => finish(resolve, data)
+      script.onerror = () => finish(reject, new Error('Could not reach docs.google.com.'))
+      script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.id)}`
+        + `/gviz/tq?tqx=out:json;responseHandler:${cb}`
+        + `&gid=${encodeURIComponent(sheet.gid)}&_=${Date.now()}`
+      document.head.append(script)
+    })
+  }
+
+  // -------------------------------------------------------------- shaping ---
+
+  const GVIZ_DATE = /^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)$/
+
+  /** One cell as display text: Google's own formatting when it sent any. */
+  function cellText(cell) {
+    if (!cell) return ''
+    if (cell.f != null && cell.f !== '') return String(cell.f)
+    const value = cell.v
+    if (value == null || value === '') return ''
+    if (typeof value === 'string') {
+      const date = GVIZ_DATE.exec(value)
+      if (date) {
+        const [, y, mo, d, h, mi, s] = date
+        const parsed = new Date(+y, +mo, +d, +(h || 0), +(mi || 0), +(s || 0))
+        return h != null ? parsed.toLocaleString() : parsed.toLocaleDateString()
+      }
+    }
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+    return String(value)
+  }
+
+  const A1 = (i) => (i < 26 ? String.fromCharCode(65 + i) : A1(Math.floor(i / 26) - 1) + A1(i % 26))
+
+  /**
+   * Turn a gviz table into { header, rows } of plain strings.
+   *
+   * gviz promotes the sheet's first row to column labels when it looks like a
+   * header and leaves the labels blank when it does not -- so blank labels
+   * mean row 1 is still sitting in the data and is the real header.
+   */
+  function toGrid(table) {
+    const cols = table?.cols ?? []
+    let rows = (table?.rows ?? []).map((row) => cols.map((_, i) => cellText(row?.c?.[i])))
+    const labels = cols.map((col) => String(col?.label ?? '').trim())
+    const header = labels.some(Boolean) ? labels
+                 : rows.length ? rows.shift()
+                 : cols.map((_, i) => A1(i))
+
+    // Sheets pad a grid out to 1000 rows and 26 columns; drop the empty tail.
+    while (rows.length && rows[rows.length - 1].every((cell) => cell === '')) rows.pop()
+    let width = header.length
+    while (width > 1 && header[width - 1] === '' && rows.every((row) => row[width - 1] === '')) width--
+
+    return {
+      header: header.slice(0, width).map((label, i) => label || A1(i)),
+      rows: rows.map((row) => row.slice(0, width)),
+      numeric: Array.from({ length: width }, (_, i) => {
+        const values = rows.map((row) => row[i]).filter((cell) => cell !== '')
+        return values.length > 0 && values.every((cell) => /^[-+$(]?[\d,]+(\.\d+)?\)?%?$/.test(cell))
+      }),
+    }
+  }
+
+  // ------------------------------------------------------------ rendering ---
+
+  const escapeHtml = (text) => text.replace(/[&<>"]/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])
+
+  function renderTabs() {
+    el.tabs.hidden = sheets.length === 0
+    el.tabs.innerHTML = sheets.map((sheet, i) => {
+      const view = views[i] ?? {}
+      const label = sheet.name || `Sheet ${i + 1}`
+      return `<button class="tab" role="tab" data-i="${i}" aria-selected="${i === active}">`
+           + `<span class="dot ${view.status ?? ''}"></span>${escapeHtml(label)}</button>`
+    }).join('')
+  }
+
+  function renderPanel() {
+    const sheet = sheets[active]
+    const view = views[active]
+    if (!sheet || !view) { el.panel.hidden = true; return }
+
+    el.panel.hidden = false
+    el.panelTitle.textContent = sheet.name || `Sheet ${active + 1}`
+    el.openIn.href = sheet.url
+
+    if (view.status === 'loading' && !view.grid) { el.grid.innerHTML = `<p class="msg">Loading…</p>`; return }
+    if (view.status === 'error') { el.grid.innerHTML = errorHtml(sheet, view.error); return }
+    if (!view.grid) { el.grid.innerHTML = `<p class="msg">Not loaded yet.</p>`; return }
+
+    const needle = el.filter.value.trim().toLowerCase()
+    const { header, rows, numeric } = view.grid
+    const shown = needle
+      ? rows.filter((row) => row.some((cell) => cell.toLowerCase().includes(needle)))
+      : rows
+
+    if (!shown.length) {
+      el.grid.innerHTML = `<p class="msg">${needle ? 'No rows match that filter.' : 'This tab is empty.'}</p>`
+      return
+    }
+
+    const cls = (i) => (numeric[i] ? ' class="num"' : '')
+    el.grid.innerHTML =
+      '<table><thead><tr>'
+      + header.map((label, i) => `<th${cls(i)}>${escapeHtml(label)}</th>`).join('')
+      + '</tr></thead><tbody>'
+      + shown.map((row) =>
+          '<tr>' + row.map((cell, i) => `<td${cls(i)}>${escapeHtml(cell)}</td>`).join('') + '</tr>').join('')
+      + '</tbody></table>'
+  }
+
+  function errorHtml(sheet, message) {
+    return `<div class="msg error"><strong>Couldn't read this sheet.</strong><br>${escapeHtml(message)}
+      <ul>
+        <li>It has to be shared <em>Anyone with the link — Viewer</em>. Open
+            <code>${escapeHtml(sheet.url)}</code> in a private window; if it asks you to sign in,
+            this page can't read it either and the owner has to widen the sharing.</li>
+        <li>It has to be a real Google Sheet. An uploaded <code>.xlsx</code> in Drive has no
+            live data endpoint — ask the owner to open it and pick
+            <em>File → Save as Google Sheets</em>.</li>
+        <li>The <code>gid</code> has to name a tab that still exists — renaming a tab is fine,
+            deleting and recreating it changes the gid.</li>
+      </ul></div>`
+  }
+
+  const clockText = (date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+
+  function renderStamp() {
+    const times = views.map((view) => view.fetchedAt).filter(Boolean)
+    const failures = views.filter((view) => view.status === 'error').length
+    if (views.some((view) => view.status === 'loading')) { el.stamp.textContent = 'Refreshing…'; return }
+    if (!times.length) { el.stamp.textContent = ''; return }
+    const oldest = new Date(Math.min(...times))
+    el.stamp.textContent = `Updated ${clockText(oldest)}${failures ? ` · ${failures} failed` : ''}`
+  }
+
+  const renderAll = () => { renderTabs(); renderPanel(); renderStamp() }
+
+  // ------------------------------------------------------------- refresh ---
+
+  async function refresh() {
+    if (!sheets.length) return
+    el.refresh.disabled = true
+    views.forEach((view) => { view.status = 'loading' })
+    renderAll()
+
+    await Promise.all(sheets.map(async (sheet, i) => {
+      const view = views[i]
+      try {
+        const data = await fetchTab(sheet)
+        if (data?.status === 'error') {
+          const reason = data.errors?.[0]
+          throw new Error(String(reason?.detailed_message ?? reason?.message ?? 'Google refused the request.')
+            .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
+        }
+        view.grid = toGrid(data?.table)
+        view.status = 'ok'
+        view.error = null
+        view.fetchedAt = Date.now()
+      } catch (err) {
+        view.status = 'error'
+        view.error = err.message || String(err)
+      }
+    }))
+
+    el.refresh.disabled = false
+    renderAll()
+  }
+
+  function setAuto(seconds) {
+    clearInterval(timer)
+    timer = null
+    store.set(STORE_AUTO, String(seconds))
+    if (seconds > 0) timer = setInterval(refresh, seconds * 1000)
+  }
+
+  // ---------------------------------------------------------------- wiring ---
+
+  function showSetup(show) {
+    el.setup.hidden = !show
+    el.panel.hidden = show || !sheets.length
+    el.tabs.hidden = show || !sheets.length
+    if (show) {
+      el.links.value = store.get(STORE_LINKS)
+        ?? sheets.map((sheet) => `${sheet.name || 'Sheet'} | ${sheet.url}`).join('\n')
+      el.links.focus()
+    }
+  }
+
+  function applyConfig(next) {
+    sheets = next
+    views = sheets.map(() => ({ status: 'idle', grid: null, error: null, fetchedAt: null }))
+    active = 0
+    el.filter.value = ''
+    renderAll()
+    if (sheets.length) refresh()
+  }
+
+  el.refresh.addEventListener('click', refresh)
+  el.auto.addEventListener('change', () => setAuto(Number(el.auto.value)))
+  el.filter.addEventListener('input', renderPanel)
+  el.tabs.addEventListener('click', (event) => {
+    const tab = event.target.closest('.tab')
+    if (!tab) return
+    active = Number(tab.dataset.i)
+    el.filter.value = ''
+    renderAll()
+  })
+  $('edit').addEventListener('click', () => showSetup(el.setup.hidden))
+  $('cancel').addEventListener('click', () => showSetup(false))
+  $('save').addEventListener('click', () => {
+    const next = parseLines(el.links.value)
+    if (!next.length) { alert('No Google Sheets links found. Each line needs a link like\nhttps://docs.google.com/spreadsheets/d/…'); return }
+    store.set(STORE_LINKS, el.links.value)
+    showSetup(false)
+    applyConfig(next)
+  })
+  $('reset').addEventListener('click', () => {
+    store.del(STORE_LINKS)
+    const next = loadConfig()
+    showSetup(next.length === 0)
+    applyConfig(next)
+  })
+
+  // Coming back to a phone that slept shows stale numbers; pull fresh ones.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && sheets.length && Number(el.auto.value) > 0) refresh()
+  })
+
+  const savedAuto = Number(store.get(STORE_AUTO) ?? '0')
+  el.auto.value = String(savedAuto)
+  setAuto(savedAuto)
+
+  const initial = loadConfig()
+  applyConfig(initial)
+  if (!initial.length) showSetup(true)
+})()
+</script>
+</body>
+</html>
