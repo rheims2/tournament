@@ -310,7 +310,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:"IBM Plex Mo
    =========================================================================== */
 
 const EVENT = {
-  name: "Tournament",
+  name: "Omaha Classic 2026",
   year: "",
   sub: "",
   /* Day label -> ISO date. Only needed to light up "On now" and "Up next";
@@ -322,21 +322,38 @@ const EVENT = {
 }
 
 const SHEETS = [
-  // One entry per TAB. Tabs sharing a name become one division, which is how
-  // a workbook that keeps pool play and the bracket on separate tabs lands as
-  // a single page:
+  // One entry per TAB. Entries sharing a name become one division, so a
+  // workbook split across several tabs comes out as a single page tab.
   //
-  // { name: 'Varsity Girls', role: 'pool',    url: 'https://docs.google.com/spreadsheets/d/1AbC…/edit#gid=0' },
-  // { name: 'Varsity Girls', role: 'bracket', url: 'https://docs.google.com/spreadsheets/d/1AbC…/edit#gid=884213' },
-  // { name: 'Court Schedule', role: 'schedule', url: '…' },
+  // The six Omaha Classic workbooks, with the tabs each one has. Paste each
+  // tab's link in place of the empty string -- open the tab in Google Sheets
+  // and copy the address bar; the #gid=… on the end is that tab.
   //
-  // Same file id, different gid -- open each tab in Google Sheets and copy the
-  // URL, the #gid=… on the end is that tab.
+  // { name: 'Girls Varsity', role: 'pool',    url: '' },   // "Girls V Pool"
+  // { name: 'Girls Varsity', role: 'bracket', url: '' },   // "G V Schedule"
   //
-  // role: 'pool'     this tab is pool play
-  //       'bracket'  this tab is the bracket
-  //       'division' one tab holding both, sorted out by its headings (default)
-  //       'schedule' the master court grid: times across, courts down
+  // { name: 'Girls JV1',     role: 'pool',    url: '' },   // "Girls JV1 P"
+  // { name: 'Girls JV1',     role: 'bracket', url: '' },   // "G JV1 Schedule"
+  //
+  // { name: 'Girls JV2',     role: 'pool',    url: '' },   // "Girls JV2 P"
+  // { name: 'Girls JV2',     role: 'bracket', url: '' },   // "G JV2 Schedule"
+  //
+  // { name: 'Boys Varsity',  role: 'pool',    url: '' },   // "Boys Varsity Pool"
+  // { name: 'Boys Varsity',  role: 'bracket', url: '' },   // "BV Schedule"
+  //
+  // { name: 'Boys JV',       role: 'pool',    url: '' },   // "Boys JV Pool"
+  // { name: 'Boys JV',       role: 'bracket', url: '' },   // "B JV Schedule"
+  //
+  // Girls JH keeps four tabs; all four are one division:
+  // { name: 'Girls JH',      role: 'pool',    url: '' },   // "JH Pool Sched"
+  // { name: 'Girls JH',      role: 'pool',    url: '' },   // "JH Pool Results"
+  // { name: 'Girls JH',      role: 'bracket', url: '' },   // "JH Gold Div"
+  // { name: 'Girls JH',      role: 'bracket', url: '' },   // "JH Silver Div"
+  //
+  // role: 'pool'     fixtures and/or a score matrix
+  //       'bracket'  a drawn bracket
+  //       'division' work it out from the headings
+  //       'schedule' a master court grid: times across, courts down
   //       'raw'      no parsing, just show the sheet as a table
 ]
 </script>
@@ -887,9 +904,13 @@ function whyUnread(block, kind) {
 }
 
 /** Whoever actually appears in a division, once its tabs are merged. */
+const RE_SLOT = /^(?:\d+(?:st|nd|rd|th)\s*seed|seed\s*\d+|winner\b.*|loser\b.*|bye|tbd|[A-Za-z]{1,2}\d{1,2}|#[A-Z/]+[!?]?.*)$/i
 function teamsOf(d) {
   const seen = new Map()
-  const add = t => { const k = norm(t); if (t && !seen.has(k)) seen.set(k, t) }
+  const add = t => {
+    const k = norm(t)
+    if (t && !RE_SLOT.test(t.trim()) && !seen.has(k)) seen.set(k, t)
+  }
   d.roster.forEach(add)
   if (d.places) d.places.forEach(add)
   d.pools.forEach(p => p.ms.forEach(m => { add(m.a); add(m.b) }))
@@ -940,7 +961,9 @@ function readTemplate(grid, force) {
   }
 
   /* --- score matrices, anchored on "+/- Total" --- */
-  const scores = new Map()
+  const scores = new Map()      // pair -> { text, a } (a names which side is written first)
+  const pairs = []              // every pairing the matrix defines, game or not
+  const seenPair = new Set()
   const key = (a, b) => [norm(a), norm(b)].sort().join('||')
   const matrices = []
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
@@ -963,19 +986,39 @@ function readTemplate(grid, force) {
     if (!cols.length || rows.length !== cols.length) continue
     matrices.push({ poolName, court, row: r })
 
+    // Both halves are read, not just the upper triangle: the template mirrors
+    // every pairing, and a scorer fills in whichever box they land on -- the
+    // one real score in these workbooks sits below the diagonal. The sub-labels
+    // inside each cell say which side is written first, so the orientation
+    // travels with the score rather than being assumed.
     rows.forEach((tr, i) => cols.forEach((tc, j) => {
-      if (j <= i) return                       // upper triangle; the mirror is the same game
+      if (i === j) return
       const a = at(tr.row, tc.col + 1) || tr.name
       const b = at(tr.row, tc.col + 2) || tc.name
+      const k = key(a, b)
+      if (!seenPair.has(k)) { seenPair.add(k); pairs.push({ a, b, pool: poolName, court }) }
       const sets = []
       for (let n = 1; n <= 5; n++) {
         if (!/^set/i.test(at(tr.row + n, tc.col))) break
         const x = at(tr.row + n, tc.col + 1), y = at(tr.row + n, tc.col + 2)
         if (x !== '' || y !== '') sets.push(`${x || 0}-${y || 0}`)
       }
-      if (sets.length) scores.set(key(a, b), sets.join(', '))
+      if (sets.length && !scores.has(k)) scores.set(k, { text: sets.join(', '), a })
     }))
   }
+
+  /* --- a legend of seed codes ("A1" -> "LC JH A") in two adjacent columns --- */
+  const legend = new Map()
+  for (let c = 0; c + 1 < W; c++) {
+    const hits = []
+    for (let r = 0; r < H; r++) {
+      const code = at(r, c), name = at(r, c + 1)
+      if (/^[A-Za-z]{1,2}\d?$/.test(code) && name.length > 2 && !/^[A-Za-z]{1,2}\d?$/.test(name)) hits.push([code, name])
+      else if (code || name) hits.length = hits.length   // gaps are fine
+    }
+    if (hits.length >= 3) hits.forEach(([code, name]) => { if (!legend.has(norm(code))) legend.set(norm(code), name) })
+  }
+  const resolve = v => legend.get(norm(v)) ?? v
 
   /* --- fixtures: a row carrying a bare "vs" between two teams --- */
   const poolAt = row => {
@@ -985,14 +1028,21 @@ function readTemplate(grid, force) {
   const fixtures = []
   for (let r = 0; r < H; r++) {
     const row = grid[r] ?? []
-    const vs = row.findIndex(x => /^vs\.?$/i.test(String(x).trim()))
     const label = row.find(x => String(x).trim()) ?? ''
     const timeCell = row.find(x => isClock(x))
-    if (vs > 0) {
-      let a = '', b = ''
-      for (let k = vs - 1; k > 0 && !a; k--) { const v = at(r, k); if (v && !isClock(v)) a = v }
-      for (let k = vs + 1; k < W && !b; k++) { const v = at(r, k); if (v) b = v }
-      if (a && b) fixtures.push({ label: String(label).trim(), t: timeCell || '', a, b, pool: poolAt(r) })
+    // A row can carry more than one game -- two courts side by side.
+    const vsCols = []
+    row.forEach((x, i) => { if (/^vs\.?$/i.test(String(x).trim())) vsCols.push(i) })
+    if (vsCols.length) {
+      vsCols.forEach((vs, n) => {
+        const left = n ? vsCols[n - 1] + 1 : 0
+        const right = n + 1 < vsCols.length ? vsCols[n + 1] - 1 : W
+        let a = '', b = ''
+        for (let k = vs - 1; k >= left && !a; k--) { const v = at(r, k); if (v && !isClock(v)) a = v }
+        for (let k = vs + 1; k <= right && k < W && !b; k++) { const v = at(r, k); if (v && !isClock(v)) b = v }
+        if (a && b) fixtures.push({ label: n ? '' : String(label).trim(), t: timeCell || '',
+                                    a: resolve(a), b: resolve(b), pool: poolAt(r) })
+      })
       continue
     }
     // "X-over A1 vs B2" -- a real slot whose entrants the pools decide.
@@ -1027,31 +1077,42 @@ function readTemplate(grid, force) {
     return ''
   }
 
-  if (!fixtures.length && !games.length) return null
+  if (!fixtures.length && !games.length && !pairs.length) return null
 
   /* --- assemble --- */
   const mk = (o) => ({ n: null, day: '', t: '', c: '', pool: '', round: '', a: '', b: '', r: null, w: null, ...o })
   const courtOf = new Map(matrices.map(m => [norm(m.poolName), m.court]))
+  /** A score written the other way round has its pairs swapped, not its sides. */
+  const flip = t => t.replace(/(\d{1,3})(\s*[-–—]\s*)(\d{1,3})/g, (_, x, d, y) => y + d + x)
   const withScore = f => {
-    const r = f.a && f.b ? scores.get(key(f.a, f.b)) ?? null : null
-    return mk({ ...f, n: f.label || null, t: fmtTime(f.t), c: courtOf.get(norm(f.pool)) || '', r,
+    const found = f.a && f.b ? scores.get(key(f.a, f.b)) : null
+    const r = found ? (norm(found.a) === norm(f.a) ? found.text : flip(found.text)) : null
+    return mk({ ...f, n: f.label || null, t: fmtTime(f.t),
+                c: f.court || courtOf.get(norm(f.pool)) || '', r,
                 w: r ? (inferWinner(r, f.a, f.b) ?? crosstabWinner(r)) : null,
                 byPosition: true })
   }
 
-  const out = { pools: [], groups: [], roster: [], places: null, placesNote: '', unread: [] }
+  const out = { pools: [], groups: [], roster: [], pairs: [], places: null, placesNote: '', unread: [] }
 
-  if (force !== 'bracket' && fixtures.length) {
+  // Every pairing the matrix defines, with its score if one is in. A 7-team
+  // pool's matrix has 21 of these while only 15 games get played, so these
+  // are a lookup table, not a schedule -- buildModel promotes them to games
+  // only for a division whose tabs carry no fixture list at all.
+  out.pairs = pairs.map(pr => ({ ...pr, ...(scores.get(key(pr.a, pr.b)) ?? {}) }))
+
+  const list = fixtures.map(withScore)
+  if (list.length) {
     const byPool = new Map()
     pools.forEach(p => byPool.set(norm(p.name), { name: p.name, note: '', ms: [] }))
-    for (const f of fixtures) {
+    for (const f of list) {
       const k = norm(f.pool) || 'pool play'
       if (!byPool.has(k)) byPool.set(k, { name: f.pool || 'Pool play', note: '', ms: [] })
-      byPool.get(k).ms.push(withScore(f))
+      byPool.get(k).ms.push(f)
     }
     out.pools = [...byPool.values()].filter(p => p.ms.length)
-    pools.forEach(p => p.teams.forEach(t => out.roster.push(t)))
   }
+  pools.forEach(p => p.teams.forEach(t => out.roster.push(t)))
 
   if (games.length) {
     const rounds = new Map()
@@ -1072,6 +1133,7 @@ function readTemplate(grid, force) {
     out.groups = [{ title: null, rounds: ordered.map(([t, ms]) => ({ name: t, ms })) }]
   }
 
+  if (!out.pools.length && !out.groups.length && !out.pairs.length) return null
   return out
 }
 
@@ -1123,16 +1185,17 @@ function buildModel() {
     if (s.role === 'raw') return
     if (!byDiv.has(s.div)) byDiv.set(s.div, {
       id: s.div, tab: s.name || `Sheet ${i + 1}`, name: s.name || `Sheet ${i + 1}`,
-      pools: [], groups: [], roster: [], places: null, placesNote: '',
+      pools: [], groups: [], roster: [], pairs: [], places: null, placesNote: '',
     })
     const d = byDiv.get(s.div)
     d.pools.push(...v.parsed.pools)
     d.groups.push(...v.parsed.groups)
     d.roster.push(...v.parsed.roster)
+    d.pairs.push(...(v.parsed.pairs ?? []))
     if (v.parsed.places && !d.places) { d.places = v.parsed.places; d.placesNote = v.parsed.placesNote }
   })
   const divisions = [...byDiv.values()]
-  divisions.forEach(d => { d.teams = teamsOf(d) })
+  divisions.forEach(d => { foldPools(d); applyPairs(d); d.teams = teamsOf(d) })
 
   const all = []
   divisions.forEach(dv => {
@@ -1152,6 +1215,67 @@ function buildModel() {
 }
 
 const RE_CLOCK = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i
+/**
+ * Two tabs of one division often describe the same game from different
+ * sides: the schedule tab gives it a time and a court, the pool tab's score
+ * matrix gives it a result. Fold those into one row rather than listing the
+ * fixture twice.
+ */
+function foldPools(d) {
+  const seen = new Map()
+  for (const p of d.pools) {
+    p.ms = p.ms.filter(m => {
+      if (!m.a || !m.b) return true
+      const k = [norm(m.a), norm(m.b)].sort().join('||')
+      const first = seen.get(k)
+      if (!first) { seen.set(k, m); return true }
+      if (!first.r && m.r) { first.r = m.r; first.w = m.w; first.byPosition = m.byPosition }
+      if (!first.t && m.t) { first.t = m.t; first.n = first.n || m.n; first.c = first.c || m.c }
+      return false
+    })
+  }
+  d.pools = d.pools.filter(p => p.ms.length)
+}
+
+const pairKey = (a, b) => [norm(a), norm(b)].sort().join('||')
+const flipScore = t => String(t).replace(/(\d{1,3})(\s*[-–—]\s*)(\d{1,3})/g, (_, x, d, y) => y + d + x)
+
+/**
+ * The score matrix lives on one tab and the fixture list often on another, so
+ * results are matched to games here, across the whole division. A division
+ * with no fixture list anywhere falls back to the matrix's own pairings.
+ */
+function applyPairs(d) {
+  const byPair = new Map()
+  for (const pr of d.pairs) if (pr.text) byPair.set(pairKey(pr.a, pr.b), pr)
+
+  const attach = m => {
+    if (m.r || !m.a || !m.b) return
+    const hit = byPair.get(pairKey(m.a, m.b))
+    if (!hit) return
+    m.r = norm(hit.a) === norm(m.a) ? hit.text : flipScore(hit.text)
+    m.byPosition = true
+    m.w = inferWinner(m.r, m.a, m.b) ?? crosstabWinner(m.r)
+  }
+  d.pools.forEach(p => p.ms.forEach(attach))
+  d.groups.forEach(g => g.rounds.forEach(r => r.ms.forEach(attach)))
+
+  if (!d.pools.some(p => p.ms.length) && d.pairs.length) {
+    const byPool = new Map()
+    for (const pr of d.pairs) {
+      const k = norm(pr.pool) || 'pool play'
+      if (!byPool.has(k)) byPool.set(k, { name: pr.pool || 'Pool play', note: '', ms: [] })
+      const r = pr.text ?? null
+      byPool.get(k).ms.push({ n: null, day: '', t: '', c: pr.court || '', pool: pr.pool, round: '',
+        a: pr.a, b: pr.b, r, byPosition: true,
+        w: r ? (inferWinner(r, pr.a, pr.b) ?? crosstabWinner(r)) : null })
+    }
+    d.pools = [...byPool.values()]
+  }
+  // The schedule decides the order, not the order tabs happened to be read in.
+  d.pools.forEach(p => p.ms.sort((x, y) => mins(x.t) - mins(y.t)))
+}
+
 const mins = t => {
   const m = RE_CLOCK.exec(String(t || '').trim())
   if (!m) return 1e6                       // no time -> sorts last

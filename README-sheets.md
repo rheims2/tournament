@@ -77,6 +77,10 @@ before the general one below. Merged cells matter throughout: Google returns
 a value only at a merged range's top-left corner and blanks for the rest, so
 the reader follows anchors and steps over the gaps.
 
+The six Omaha Classic workbooks are all of this shape. Five keep two tabs
+(pool + schedule); Girls JH keeps four (`JH Pool Sched`, `JH Pool Results`,
+`JH Gold Div`, `JH Silver Div`) and all four are one division.
+
 **A pool tab** is read for three things:
 
 - the **roster** — a `Pool A` cell with the team names under it;
@@ -90,8 +94,23 @@ the reader follows anchors and steps over the gaps.
   the pools have yet to fill.
 
 The fixtures supply times, courts and pairings; the matrix supplies the
-scores; they're joined on the pair of team names. Standings are computed from
-whatever scores are in.
+scores; they're joined on the pair of team names — **across tabs**, since a
+division often keeps its schedule on one tab and its scores on another. A
+matrix cell records which side is written first, so a score entered on either
+side of the diagonal lands the right way round.
+
+The matrix defines *every* pairing (21 of them for a seven-team pool) while
+only the scheduled ones get played, so it is treated as a lookup table rather
+than a schedule. Where a division has no fixture list anywhere — a four- or
+five-team round robin, say — the matrix's pairings do become the games.
+
+What a tab is *called* doesn't decide what's on it: Boys Varsity keeps its
+pool round robin on the Schedule tab, beside the drawn bracket, and both are
+read. Standings are computed from whatever scores are in.
+
+A schedule that names teams by seed code (`A1 vs B2`) is resolved through the
+code-to-team legend alongside it, and a row can carry more than one game where
+two courts run side by side.
 
 **A bracket tab** is a bracket *drawn* in cells. Each game is three cells in a
 row — label, time, `Court n` — with its entrants in the same column above and
