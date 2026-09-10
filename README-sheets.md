@@ -69,9 +69,44 @@ widen the sharing. "Anyone in *company* with the link" is not enough, because
 the pages read anonymously. The owner does **not** need File → Publish to web,
 and you need nothing beyond the view link.
 
-## The layout `tournament.html` expects
+## The tournament-template layout
 
-It reads the shape these workbooks are normally laid out in: stacked blocks,
+The workbooks these tournaments run on are generated from a template that
+looks nothing like a list of games, so it gets a dedicated reader, tried
+before the general one below. Merged cells matter throughout: Google returns
+a value only at a merged range's top-left corner and blanks for the rest, so
+the reader follows anchors and steps over the gaps.
+
+**A pool tab** is read for three things:
+
+- the **roster** — a `Pool A` cell with the team names under it;
+- the **score matrix**, found by its `+/- Total` cell — teams down the left in
+  merged 3-row bands, opponents across the top in merged 3-column bands, and
+  inside each cell the two team names above a `Set 1`/`Set 2` pair of score
+  boxes. Only the upper triangle is read; the mirrored half is the same game;
+- the **fixture list** — `Match A1 | 13:00:00 | Cougars V | vs | Warriors
+  Silver`. Rows are found by the bare `vs` cell rather than a header row,
+  because these lists don't have one. `X-over A1 vs B2` is kept as a real slot
+  the pools have yet to fill.
+
+The fixtures supply times, courts and pairings; the matrix supplies the
+scores; they're joined on the pair of team names. Standings are computed from
+whatever scores are in.
+
+**A bracket tab** is a bracket *drawn* in cells. Each game is three cells in a
+row — label, time, `Court n` — with its entrants in the same column above and
+below, and any `CHAMPION` / `Third Place` label to its right. Rounds are
+grouped by start time.
+
+One limit worth knowing: in a drawn bracket the line from a game to the next
+one is a cell *border*, which carries no value. So where a slot is filled by
+"whoever wins the 10:00 game" and the sheet doesn't write that in, the slot
+shows as **TBD** rather than being guessed at. Everything the sheet actually
+labels — `4th Seed`, `Loser G V D` — is read and shown.
+
+## The general layout
+
+If a tab isn't in the template shape above, it's read as stacked blocks,
 each one a **heading row** with a single filled cell, a **header row** naming
 the columns, then the rows, and a blank row before the next block.
 

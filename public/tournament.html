@@ -130,6 +130,7 @@ thead th{
 tbody tr:last-child td{border-bottom:0}
 tbody tr.hit{background:var(--accent-soft)}
 td.t{white-space:nowrap;font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+td.t .lbl{display:block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
 td.team{font-weight:500}
 td.res{color:var(--ink-2);font-size:13px}
 td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:"IBM Plex Mono",monospace;font-size:13px}
@@ -776,6 +777,9 @@ function classify(block) {
  * Standings and roster blocks are still recognised on their own merits.
  */
 function parseSheet(grid, force) {
+  const tpl = readTemplate(grid, force)
+  if (tpl) return tpl
+
   // The tab's own title ("Varsity Girls — Bracket") names the sheet, not a
   // sub-bracket inside it. Taken from the full grid before banding.
   const sheetTitle = norm(grid.find(r => filled(r) === 1)?.find(c => c !== '') || '')
@@ -893,6 +897,184 @@ function teamsOf(d) {
   return [...seen.values()].sort((x, y) => x.localeCompare(y))
 }
 
+/* ================= 2b. the pool-sheet / bracket template ================
+   The workbooks these tournaments are run from are generated from a template
+   that looks nothing like a list of games, so it gets a reader of its own,
+   tried before the generic one.
+
+   A POOL tab holds, per pool:
+     - a roster: "Pool A" with the team names under it
+     - a score matrix anchored on a "+/- Total" cell: teams down the left in
+       merged 3-row bands, opponents across the top in merged 3-column bands,
+       and inside each cell the two team names over a "Set 1"/"Set 2" pair of
+       score boxes
+     - a fixture list: "Match A1 | 13:00:00 | Cougars V | vs | Warriors Silver"
+
+   A BRACKET tab is a bracket *drawn* in cells. Each game is three cells in a
+   row -- label, time, "Court n" -- with its two entrants in the same column
+   above and below. Whoever is not named there is decided by a line drawn
+   between cells, which carries no value, so those slots stay open rather
+   than being guessed at.
+
+   Merged cells matter: Google returns a value only at a merged range's
+   top-left corner and blanks for the rest, so everything here reads anchors
+   and steps over the gaps.
+   ======================================================================== */
+
+const isClock = v => RE_CLOCK.test(String(v).trim())
+
+function readTemplate(grid, force) {
+  const H = grid.length
+  const W = Math.max(0, ...grid.map(r => r.length))
+  const at = (r, c) => String(grid[r]?.[c] ?? '').trim()
+
+  /* --- rosters: "Pool A" over its teams (the matrix copy has "Court n") --- */
+  const pools = []
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!/^pool\s+\S+$/i.test(at(r, c))) continue
+    const first = at(r + 1, c)
+    if (!first || /^court/i.test(first)) continue
+    const teams = []
+    for (let k = r + 1; k < H && at(k, c); k++) teams.push(at(k, c))
+    if (teams.length) pools.push({ name: at(r, c), row: r, teams, ms: [] })
+  }
+
+  /* --- score matrices, anchored on "+/- Total" --- */
+  const scores = new Map()
+  const key = (a, b) => [norm(a), norm(b)].sort().join('||')
+  const matrices = []
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!/^\+\/-\s*total$/i.test(at(r, c))) continue
+    const poolName = at(r, c - 1)
+    const court = /^court/i.test(at(r + 1, c - 1)) ? at(r + 1, c - 1).replace(/^court\s*/i, '') : ''
+    // Opponents run across the top until the summary columns begin.
+    const cols = []
+    for (let k = c + 1; k < W; k++) {
+      const v = at(r, k)
+      if (!v) continue
+      if (/^(wins|losses|%|place|head|percent|point|rank)/i.test(v)) break
+      cols.push({ name: v, col: k })
+    }
+    // The matrix is square, so the teams down the side are as many again.
+    const rows = []
+    for (let k = r + 2; k < H && rows.length < cols.length; k++) {
+      if (at(k, c - 1)) rows.push({ name: at(k, c - 1), row: k })
+    }
+    if (!cols.length || rows.length !== cols.length) continue
+    matrices.push({ poolName, court, row: r })
+
+    rows.forEach((tr, i) => cols.forEach((tc, j) => {
+      if (j <= i) return                       // upper triangle; the mirror is the same game
+      const a = at(tr.row, tc.col + 1) || tr.name
+      const b = at(tr.row, tc.col + 2) || tc.name
+      const sets = []
+      for (let n = 1; n <= 5; n++) {
+        if (!/^set/i.test(at(tr.row + n, tc.col))) break
+        const x = at(tr.row + n, tc.col + 1), y = at(tr.row + n, tc.col + 2)
+        if (x !== '' || y !== '') sets.push(`${x || 0}-${y || 0}`)
+      }
+      if (sets.length) scores.set(key(a, b), sets.join(', '))
+    }))
+  }
+
+  /* --- fixtures: a row carrying a bare "vs" between two teams --- */
+  const poolAt = row => {
+    const above = matrices.filter(m => m.row < row).sort((x, y) => y.row - x.row)[0]
+    return above?.poolName || ''
+  }
+  const fixtures = []
+  for (let r = 0; r < H; r++) {
+    const row = grid[r] ?? []
+    const vs = row.findIndex(x => /^vs\.?$/i.test(String(x).trim()))
+    const label = row.find(x => String(x).trim()) ?? ''
+    const timeCell = row.find(x => isClock(x))
+    if (vs > 0) {
+      let a = '', b = ''
+      for (let k = vs - 1; k > 0 && !a; k--) { const v = at(r, k); if (v && !isClock(v)) a = v }
+      for (let k = vs + 1; k < W && !b; k++) { const v = at(r, k); if (v) b = v }
+      if (a && b) fixtures.push({ label: String(label).trim(), t: timeCell || '', a, b, pool: poolAt(r) })
+      continue
+    }
+    // "X-over A1 vs B2" -- a real slot whose entrants the pools decide.
+    if (timeCell && /\bvs\b/i.test(String(label))) {
+      const [as, bs] = String(label).split(/\s+vs\.?\s+/i)
+      fixtures.push({ label: String(label).trim(), t: timeCell, a: '', b: '', as, bs, pool: poolAt(r) })
+    }
+  }
+
+  /* --- a drawn bracket: label | time | "Court n", entrants above and below --- */
+  const games = []
+  for (let r = 0; r < H; r++) for (let c = 0; c + 2 < W; c++) {
+    if (!at(r, c) || !isClock(at(r, c + 1)) || !/^court/i.test(at(r, c + 2))) continue
+    games.push({ label: at(r, c), t: at(r, c + 1), court: at(r, c + 2).replace(/^court\s*/i, ''), row: r, col: c })
+  }
+  const isLabel = (r, c) => games.some(g => g.row === r && g.col === c)
+  const entrant = (g, dir) => {
+    for (let k = 1; k <= 8; k++) {
+      const r = g.row + dir * k
+      if (r < 0 || r >= H) break
+      const v = at(r, g.col)
+      if (!v) continue
+      return isLabel(r, g.col) ? '' : v
+    }
+    return ''
+  }
+  const RE_PLACE = /champion|(?:first|second|third|fourth|fifth|fith|sixth|1st|2nd|3rd|4th|5th|6th)\s*place/i
+  const placeNear = g => {
+    for (let r = Math.max(0, g.row - 1); r <= g.row + 3; r++)
+      for (let c = g.col + 1; c < Math.min(W, g.col + 14); c++)
+        if (RE_PLACE.test(at(r, c))) return at(r, c)
+    return ''
+  }
+
+  if (!fixtures.length && !games.length) return null
+
+  /* --- assemble --- */
+  const mk = (o) => ({ n: null, day: '', t: '', c: '', pool: '', round: '', a: '', b: '', r: null, w: null, ...o })
+  const courtOf = new Map(matrices.map(m => [norm(m.poolName), m.court]))
+  const withScore = f => {
+    const r = f.a && f.b ? scores.get(key(f.a, f.b)) ?? null : null
+    return mk({ ...f, n: f.label || null, t: fmtTime(f.t), c: courtOf.get(norm(f.pool)) || '', r,
+                w: r ? (inferWinner(r, f.a, f.b) ?? crosstabWinner(r)) : null,
+                byPosition: true })
+  }
+
+  const out = { pools: [], groups: [], roster: [], places: null, placesNote: '', unread: [] }
+
+  if (force !== 'bracket' && fixtures.length) {
+    const byPool = new Map()
+    pools.forEach(p => byPool.set(norm(p.name), { name: p.name, note: '', ms: [] }))
+    for (const f of fixtures) {
+      const k = norm(f.pool) || 'pool play'
+      if (!byPool.has(k)) byPool.set(k, { name: f.pool || 'Pool play', note: '', ms: [] })
+      byPool.get(k).ms.push(withScore(f))
+    }
+    out.pools = [...byPool.values()].filter(p => p.ms.length)
+    pools.forEach(p => p.teams.forEach(t => out.roster.push(t)))
+  }
+
+  if (games.length) {
+    const rounds = new Map()
+    for (const g of games) {
+      const a = entrant(g, -1), b = entrant(g, +1)
+      const known = n => n && !/^(loser|winner)\b/i.test(n) && !/seed$/i.test(n)
+      const m = mk({
+        n: g.label, t: fmtTime(g.t), c: g.court,
+        a: known(a) ? a : '', as: known(a) ? '' : a,
+        b: known(b) ? b : '', bs: known(b) ? '' : b,
+        place: placeNear(g) || undefined,
+      })
+      const r = m.t || 'Bracket'
+      if (!rounds.has(r)) rounds.set(r, [])
+      rounds.get(r).push(m)
+    }
+    const ordered = [...rounds.entries()].sort((x, y) => mins(x[0]) - mins(y[0]))
+    out.groups = [{ title: null, rounds: ordered.map(([t, ms]) => ({ name: t, ms })) }]
+  }
+
+  return out
+}
+
 /* --------------------------- the court schedule ------------------------- */
 
 const RE_TIME = /^\d{1,2}:\d{2}\s*(am|pm)?$/i
@@ -969,12 +1151,21 @@ function buildModel() {
   if (!model.schedule[schedDay]) schedDay = 0
 }
 
+const RE_CLOCK = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i
 const mins = t => {
-  const m = /^(\d{1,2}):(\d{2})\s*(am|pm)?$/i.exec(String(t || '').trim())
+  const m = RE_CLOCK.exec(String(t || '').trim())
   if (!m) return 1e6                       // no time -> sorts last
   let h = +m[1]
   if (m[3]) { h %= 12; if (/pm/i.test(m[3])) h += 12 }
   return h * 60 + +m[2]
+}
+/** 24-hour sheet times read better on a wall of scores as 1:00 PM. */
+function fmtTime(t) {
+  const m = RE_CLOCK.exec(String(t || '').trim())
+  if (!m) return String(t || '')
+  if (m[3]) return `${+m[1]}:${m[2]} ${m[3].toUpperCase()}`
+  const h = +m[1]
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 /* ------------------------------ live clock ------------------------------ */
@@ -1051,10 +1242,11 @@ function matchCard(m, showDiv) {
   const chips = [
     m.c ? `<span class="chip court">Ct ${esc(m.c)}</span>` : '',
     showDiv && D[m.div] ? `<span class="chip">${esc(D[m.div].tab)}</span>` : '',
+    m.place ? `<span class="chip place">${esc(m.place)}</span>` : '',
     isNow(m) ? '<span class="chip live">On now</span>' : '',
   ].join('')
   return `<article class="m${inMatch(m) ? ' hit' : ''}">
-    <div class="m-top">${m.n ? `<span class="m-no">#${esc(m.n)}</span>` : ''}<span class="m-t">${esc(m.t || '—')}</span>${chips}</div>
+    <div class="m-top">${m.n ? `<span class="m-no">${/^\d+$/.test(m.n) ? '#' : ''}${esc(m.n)}</span>` : ''}<span class="m-t">${esc(m.t || '—')}</span>${chips}</div>
     ${sideHTML(m, 'a')}${sideHTML(m, 'b')}
     <div class="m-res${m.r ? '' : ' pending'}">${m.r ? esc(m.r) : 'Awaiting result'}</div>
   </article>`
@@ -1092,7 +1284,7 @@ function poolBlock(dv, p) {
     const a = m.a ? `<span class="${m.w === 'a' ? 'w' : ''}">${teamBtn(m.a, dv.id)}</span>` : esc(m.as || 'TBD')
     const b = m.b ? `<span class="${m.w === 'b' ? 'w' : ''}">${teamBtn(m.b, dv.id)}</span>` : esc(m.bs || 'TBD')
     return `<tr class="${inMatch(mm) ? 'hit' : ''}">
-      ${hasTime ? `<td class="t">${m.n ? '#' + esc(m.n) + ' · ' : ''}${esc(m.t || '—')}${isNow(mm) ? ' <span class="chip live">Now</span>' : ''}</td>` : ''}
+      ${hasTime ? `<td class="t">${m.n ? `<span class="lbl">${(/^\d+$/.test(m.n) ? '#' : '') + esc(m.n)}</span>` : ''}${esc(m.t || '—')}${isNow(mm) ? ' <span class="chip live">Now</span>' : ''}</td>` : ''}
       ${hasCourt ? `<td class="t">${m.c ? 'Ct ' + esc(m.c) : ''}</td>` : ''}
       <td class="team">${a} <span class="vs">VS</span> ${b}</td>
       <td class="res">${m.r ? esc(m.r) + (m.w === 'split' ? ' <span class="chip">Split</span>' : '')
@@ -1115,7 +1307,7 @@ function poolBlock(dv, p) {
     <div class="sec-head"><h3 class="h-sec">${esc(p.name)}</h3>
       <span class="sec-note">${p.ms.filter(m => m.r).length} of ${p.ms.length} played</span></div>
     <div class="tw"><table><thead><tr>
-      ${hasTime ? '<th style="width:130px">Time</th>' : ''}
+      ${hasTime ? '<th style="width:96px">Time</th>' : ''}
       ${hasCourt ? '<th style="width:70px">Court</th>' : ''}
       <th>Match</th><th style="width:32%">Result</th>
     </tr></thead><tbody>${rows}</tbody></table></div>
